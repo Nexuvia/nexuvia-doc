@@ -39,14 +39,6 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Migration',
-      collapsed: false,
-      items: [
-        'migration/v0.1-to-v0.2',
-      ],
-    },
-    {
-      type: 'category',
       label: 'Framework Guides',
       collapsed: true,
       items: [
