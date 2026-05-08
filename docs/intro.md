@@ -33,7 +33,6 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 | Package | What it does |
 |---------|-------------|
 | [`@nexuvia/app`](/packages/app) | `NexuviaApp` — wires all clients from one config, `forRequest()` returns a typed context per request |
-| [`create-nexuvia-app`](/getting-started/quick-start) | Interactive scaffolder — `npx create-nexuvia-app my-storefront` |
 
 ### Foundation
 

@@ -43,23 +43,9 @@ Commit `.npmrc` (it contains no secrets — only the variable reference `${NODE_
 
 ---
 
-## 2. Scaffold a new project (recommended)
+## 2. Install Nexuvia
 
-The fastest way to start is the interactive scaffolder:
-
-```bash
-npx create-nexuvia-app my-storefront
-```
-
-It prompts for your project name, framework (Next.js or Node.js), Hybris host, store key, baseSite, domain, and package manager — then generates a ready-to-run project with `nexuvia.config.ts`, `nexuvia.app.ts`, and a working Next.js App Router template.
-
-Skip to [Step 4](#4-set-environment-variables) if you use this path.
-
----
-
-## Alternative: Install into an existing project
-
-Install the single umbrella package. It includes all 14 libraries and the CLI:
+Install the single umbrella package. It includes all 13 libraries and the CLI:
 
 ```bash
 npm install @nexuvia/nexuvia
