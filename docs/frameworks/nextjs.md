@@ -34,12 +34,10 @@ my-storefront/
     │   ├── api-helpers.ts                     ← createRouteOccClient
     │   ├── auth.ts                            ← registerAuthConfig (self-executes)
     │   └── smartedit.ts                       ← createSmartEditService
-    ├── providers/                             ← Layer 3 — React contexts
-    │   ├── auth-provider.tsx
+    ├── providers/                             ← Layer 3 — React contexts (optional with @nexuvia/react)
+    │   ├── auth-provider.tsx                  ← or: use NexuviaProvider from @nexuvia/react
     │   ├── cart-provider.tsx
     │   ├── cms-provider.tsx
-    │   ├── product-provider.tsx
-    │   ├── search-provider.tsx
     │   ├── smartedit-provider.tsx
     │   └── analytics-provider.tsx
     ├── store/
@@ -218,6 +216,10 @@ export default async function StoreLayout({ children, params }) {
 
 ### `src/app/[lang]/store-layout-client.tsx`
 
+:::tip Shortcut — `@nexuvia/react`
+If you install `@nexuvia/react`, you can replace the entire manual provider nesting below with a single `<NexuviaProvider>`. See the [React guide](/frameworks/react) for the pattern.
+:::
+
 ```tsx
 'use client';
 
@@ -225,8 +227,9 @@ import { Suspense, useMemo, type ReactNode } from 'react';
 import type { StoreConfig }  from '@/config/stores';
 import type { SessionUser }  from '@nexuvia/auth-client';
 import type { SmartEditServiceConfig } from '@nexuvia/smartedit';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
-import { CookieStorage }                from '@nexuvia/storage';
+import { CartClient }        from '@nexuvia/cart/client';
+import { ProxyCartAdapter } from '@nexuvia/cart';
+import { CookieStorage }    from '@nexuvia/storage';
 import { GtmAnalyticsAdapter, AnalyticsClient } from '@nexuvia/analytics';
 
 import { StoreProvider }     from '@/store/store-context';
@@ -323,4 +326,5 @@ After Phase 4 (pages): Full storefront — search, product detail, cart, checkou
 2. [`@nexuvia/app`](/wiring/app) — recommended single-file wiring
 3. [Config Bridge](/wiring/config-bridge) — manual wiring alternative
 4. [Proxy / Middleware](/wiring/proxy-middleware) — the routing layer
-5. Then walk through each library wiring page in order
+5. [`@nexuvia/react`](/frameworks/react) — replace manual provider nesting with `<NexuviaProvider>`
+6. Then walk through each library wiring page in order
