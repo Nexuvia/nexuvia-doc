@@ -128,7 +128,7 @@ export function UserMenu() {
   return (
     <div>
       <span>Hello, {user.name}</span>
-      <button onClick={() => logout('default')}>Sign out</button>
+      <button onClick={() => logout()}>Sign out</button>
     </div>
   );
 }
@@ -151,11 +151,10 @@ export function StoreBadge() {
 import { useCmsPage } from '@nexuvia/react';
 
 export function HomePage() {
-  const { page, isLoading } = useCmsPage();
+  const { page } = useCmsPage();
 
-  if (isLoading) return <p>Loading…</p>;
-  if (!page)     return <p>Page not found.</p>;
-  return <h1>{page.title}</h1>;
+  if (!page) return <p>Page not found.</p>;
+  return <h1>{page.name}</h1>;
 }
 ```
 
@@ -165,12 +164,12 @@ export function HomePage() {
 import { useAnalytics } from '@nexuvia/react';
 
 export function ProductCard({ product }) {
-  const { trackProductClick, trackAddToCart } = useAnalytics();
+  const { track } = useAnalytics();
 
   return (
-    <div onClick={() => trackProductClick({ code: product.code, name: product.name })}>
+    <div onClick={() => track({ type: 'productClick', code: product.code, name: product.name })}>
       <h2>{product.name}</h2>
-      <button onClick={() => trackAddToCart({ code: product.code, name: product.name, quantity: 1 })}>
+      <button onClick={() => track({ type: 'addToCart', code: product.code, name: product.name, quantity: 1 })}>
         Add to Cart
       </button>
     </div>
@@ -184,9 +183,9 @@ export function ProductCard({ product }) {
 import { useSmartEdit } from '@nexuvia/react';
 
 export function EditableSlot({ children }) {
-  const { isPreviewMode } = useSmartEdit();
+  const { isPreview } = useSmartEdit();
   return (
-    <div data-preview={isPreviewMode}>
+    <div data-preview={isPreview}>
       {children}
     </div>
   );
@@ -206,7 +205,7 @@ In Next.js, pass `NexuviaProvider` your server-resolved `initialUser` so there's
 import { NexuviaProvider } from '@nexuvia/react';
 import { GtmScript } from '@nexuvia/analytics';
 import type { SessionUser } from '@nexuvia/auth-client';
-import type { StoreConfig } from '@nexuvia/app';
+import type { StoreConfig } from '@nexuvia/core';
 
 interface Props {
   storeKey:    string;
@@ -247,33 +246,17 @@ import {
   AuthProvider,
   CartProvider,
   AnalyticsProvider,
-  SmartEditInternalProvider,
 } from '@nexuvia/react';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
-import { CookieStorage } from '@nexuvia/storage';
-import { useMemo } from 'react';
+
+const cartClientConfig = { baseSite: 'my-site', language: 'en' };
 
 export function App() {
-  const cartClient = useMemo(() => {
-    const adapter = new ProxyCartAdapter({ baseSite: 'my-site', language: 'en' });
-    const client  = new CartClient(adapter, new CookieStorage());
-
-    client.setPayloadExtender((base) => ({
-      ...base,
-      giftWrap: false,
-    }));
-
-    return client;
-  }, []);
-
   return (
     <StoreProvider storeKey="default" storeConfig={store} language="en">
       <AuthProvider>
-        <CartProvider client={cartClient}>
-          <AnalyticsProvider client={analyticsClient}>
-            <SmartEditInternalProvider config={smartEditConfig}>
-              <App />
-            </SmartEditInternalProvider>
+        <CartProvider clientConfig={cartClientConfig}>
+          <AnalyticsProvider gtmContainerId="GTM-XXXXXXX">
+            <App />
           </AnalyticsProvider>
         </CartProvider>
       </AuthProvider>

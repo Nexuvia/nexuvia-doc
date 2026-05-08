@@ -195,27 +195,30 @@ client.on('error', (err) => console.error(err));
 
 ## Swapping adapters (live OCC data)
 
-By default `@nexuvia/browser` uses mock adapters for product and search to avoid CORS errors. To use live data, point `product` and `search` at your backend proxy:
+By default `@nexuvia/browser` uses mock adapters for product and search to avoid CORS errors. To use live data, construct the sub-clients directly after instantiation:
 
 ```ts
-import { NexuviaClient }                         from '@nexuvia/browser';
-import { ProductClient, OccProductAdapter }       from '@nexuvia/product';
-import { OccClient }                              from '@nexuvia/occ';
+import { NexuviaClient }                   from '@nexuvia/browser';
+import { ProductClient, OccProductAdapter } from '@nexuvia/product';
+import { SearchClient, OccSearchAdapter }   from '@nexuvia/search';
+import { OccClient }                        from '@nexuvia/occ';
 
-// Build an OCC client that calls your backend proxy, not SAP directly
+const client = new NexuviaClient({
+  storeKey:         'default',
+  language:         'en',
+  cartClientConfig: { baseSite: 'my-basesite', language: 'en', apiBase: '/api/cart' },
+});
+
+// Build an OCC client pointing at your backend proxy (not SAP directly — CORS)
 const occClient = new OccClient(
   { baseUrl: '/api/occ-proxy', basePath: '', version: 'v2' },
   'my-basesite',
   'en',
 );
 
-const client = new NexuviaClient({
-  storeKey:         'default',
-  language:         'en',
-  cartClientConfig: { baseSite: 'my-basesite', language: 'en', apiBase: '/api/cart' },
-  // Override product client
-  productClient: new ProductClient(new OccProductAdapter(occClient)),
-});
+// Use the sub-clients directly — bypass client.product / client.search
+const productClient = new ProductClient(new OccProductAdapter(occClient));
+const searchClient  = new SearchClient(new OccSearchAdapter(occClient));
 ```
 
 ---

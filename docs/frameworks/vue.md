@@ -127,10 +127,11 @@ const { user, login, logout } = useAuth();
 import { useStore } from '@nexuvia/vue';
 
 const { storeKey, language, storeConfig } = useStore();
+// storeKey, language, storeConfig are readonly refs — use .value in script, unwrap automatically in template
 </script>
 
 <template>
-  <span>{{ storeConfig.currency }} — {{ language.toUpperCase() }}</span>
+  <span>{{ storeConfig.value.currency }} — {{ language.value.toUpperCase() }}</span>
 </template>
 ```
 
@@ -140,7 +141,10 @@ const { storeKey, language, storeConfig } = useStore();
 <script setup lang="ts">
 import { useAnalytics } from '@nexuvia/vue';
 
-const { trackAddToCart, trackProductClick } = useAnalytics();
+const { track } = useAnalytics();
+
+// Example:
+// track({ type: 'addToCart', code: 'SKU-001', name: 'Headphones', quantity: 1 });
 </script>
 ```
 

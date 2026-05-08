@@ -164,7 +164,8 @@ export class ProductCardComponent {
   constructor(private analytics: AnalyticsService) {}
 
   onClick() {
-    this.analytics.trackProductClick({
+    this.analytics.track({
+      type:  'productClick',
       code:  this.product.code,
       name:  this.product.name,
       price: this.product.price?.value,
@@ -176,15 +177,13 @@ export class ProductCardComponent {
 ### `StoreService`
 
 ```ts
-import { Component }   from '@angular/core';
-import { AsyncPipe }   from '@angular/common';
+import { Component }    from '@angular/core';
 import { StoreService } from '@nexuvia/angular';
 
 @Component({
   selector:   'app-store-badge',
   standalone: true,
-  imports:    [AsyncPipe],
-  template:   `<span>{{ (store.storeConfig$ | async)?.currency }} — {{ store.language }}</span>`,
+  template:   `<span>{{ store.storeConfig.currency }} — {{ store.language }}</span>`,
 })
 export class StoreBadgeComponent {
   constructor(public store: StoreService) {}
@@ -249,5 +248,5 @@ export const environment = {
 - [ ] All services injected from `@nexuvia/angular` — not written manually
 - [ ] `registerDefaultCmsComponents()` called at module load (top of `app.component.ts`)
 - [ ] Backend running for cart + auth (or Angular Universal `server.ts`)
-- [ ] Templates use `service.value$ | async` — never `.subscribe()` manually
+- [ ] Templates use `cart.cart$ | async`, `auth.user$ | async` — never `.subscribe()` manually
 - [ ] No `process.env` in client code — use `environment.ts` instead
