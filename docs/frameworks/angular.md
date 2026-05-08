@@ -130,7 +130,8 @@ const config: NexuviaConfig = {
   cms:        { useMock: true, pageLabels: { /* ... */ }, componentTypes: [] },
   smartedit:  { allowedOrigins: [], previewVersion: 'v1' },
   authServer: { clientId: '', clientSecret: '', tokenEndpoint: '' },
-  authClient: { session: { /* ... */ }, azure: { redirectUri: '' } },
+  authClient: { session: { encryptionKey: '', secureCookies: false },
+                storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey) },
   analytics:  { gtmContainerId: environment.gtmId },
 };
 
@@ -146,7 +147,7 @@ export default config;
 import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import type { Cart, CartClientState } from '@nexuvia/cart';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage } from '@nexuvia/storage';
 import config from '../../../nexuvia.config';
 
@@ -329,7 +330,7 @@ export class AuthService {
 
 ```ts
 // src/app/cms-defaults.ts
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import { CmsHeaderComponent } from './components/cms/defaults/cms-header.component';
 import { CmsFooterComponent } from './components/cms/defaults/cms-footer.component';
 

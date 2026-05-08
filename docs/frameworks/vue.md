@@ -94,10 +94,10 @@ my-storefront/
 // src/lib/clients.ts
 import { OccClient }                            from '@nexuvia/occ';
 import { CookieStorage }                        from '@nexuvia/storage';
-import { CartClient, ProxyCartAdapter }         from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter }         from '@nexuvia/cart/client';
 import { ProductClient, OccProductAdapter }     from '@nexuvia/product';
 import { SearchClient, OccSearchAdapter }       from '@nexuvia/search';
-import { CmsClient, MockCmsAdapter }            from '@nexuvia/cms';
+import { CmsClient, MockCmsAdapter }            from '@nexuvia/cms/server';
 import { GtmAnalyticsAdapter, AnalyticsClient } from '@nexuvia/analytics';
 import config from '../../nexuvia.config';
 
@@ -227,7 +227,7 @@ Vue's `componentRegistry` works exactly like in React — register Vue component
 
 ```ts
 // src/plugins/cms-defaults.client.ts (Nuxt) — runs once on client startup
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import CmsHeader  from '@/components/cms/defaults/CmsHeader.vue';
 import CmsFooter  from '@/components/cms/defaults/CmsFooter.vue';
 import CmsBanners from '@/components/cms/defaults/CmsBanners.vue';
@@ -255,7 +255,7 @@ createApp(App).mount('#app');
 <!-- src/components/cms/CmsSlotRenderer.vue -->
 <script setup lang="ts">
 import { computed } from 'vue';
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import type { CMSPage } from '@nexuvia/cms';
 
 const props = defineProps<{ page: CMSPage | null; position: string }>();
@@ -319,7 +319,7 @@ The route logic from the [Wiring](/wiring/overview) section is identical — jus
 
 ```ts
 // server/api/cart.post.ts
-import { OccCartAdapter } from '@nexuvia/cart';
+import { OccCartAdapter } from '@nexuvia/cart/server';
 import { createRouteOccClient } from '~/config/api-helpers';
 
 export default defineEventHandler(async (event) => {

@@ -150,9 +150,8 @@ const config: NexuviaConfig = {
                 componentTypes: [] },
   smartedit:  { allowedOrigins: [], previewVersion: 'v1' },
   authServer: { clientId: '', clientSecret: '', tokenEndpoint: '' },
-  authClient: { session: { cookieName: 'auth_session', nonceCookieName: 'auth_nonce',
-                            storeCookieName: 'auth_store', encryptionKey: '', secureCookies: false },
-                azure: { redirectUri: '' } },
+  authClient: { session: { encryptionKey: '', secureCookies: false },
+                storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey) },
   analytics:  { gtmContainerId: import.meta.env.VITE_GTM_ID || '' },
 };
 
@@ -173,10 +172,10 @@ Construct all clients **once** in a single module so the same instance is reused
 // src/lib/clients.ts
 import { OccClient }                            from '@nexuvia/occ';
 import { CookieStorage }                        from '@nexuvia/storage';
-import { CartClient, ProxyCartAdapter }         from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter }         from '@nexuvia/cart/client';
 import { ProductClient, OccProductAdapter, MockProductAdapter } from '@nexuvia/product';
 import { SearchClient, OccSearchAdapter, MockSearchAdapter }    from '@nexuvia/search';
-import { CmsClient, MockCmsAdapter }            from '@nexuvia/cms';
+import { CmsClient, MockCmsAdapter }            from '@nexuvia/cms/server';
 import { GtmAnalyticsAdapter, AnalyticsClient } from '@nexuvia/analytics';
 import config from '../../nexuvia.config';
 
@@ -308,7 +307,7 @@ export function ProductPage({ code }: { code: string }) {
 import express from 'express';
 import cors    from 'cors';
 import { createOccClient } from './config/server';
-import { OccCartAdapter }  from '@nexuvia/cart';
+import { OccCartAdapter }  from '@nexuvia/cart/server';
 
 const app = express();
 app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
