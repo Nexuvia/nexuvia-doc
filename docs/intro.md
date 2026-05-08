@@ -24,7 +24,7 @@ Today there is no free, framework-agnostic solution for this. Existing options a
 
 ---
 
-## The 14 packages
+## The 17 packages
 
 Nexuvia is a monorepo. Each package is self-contained and independently installable.
 
@@ -61,6 +61,15 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 | [`@nexuvia/auth-client`](/packages/auth-client) | User auth via Azure AD B2C — Authorization Code flow, encrypted session cookie |
 | [`@nexuvia/analytics`](/packages/analytics) | Analytics event tracking — GTM adapter, typed events, SSR queue |
 
+### Framework Bindings
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/react`](/packages/react) | `NexuviaProvider` + hooks — single import wires all React contexts with correct nesting |
+| [`@nexuvia/vue`](/packages/vue) | `createNexuviaPlugin()` — Vue plugin that exposes all composables with no manual wiring |
+| [`@nexuvia/angular`](/packages/angular) | `provideNexuvia()` / `NexuviaModule` — Angular standalone and NgModule APIs |
+| [`@nexuvia/browser`](/packages/browser) | `NexuviaClient` — plain TS/JS class, no framework, full sub-client API |
+
 ---
 
 ## Three-layer architecture
@@ -68,8 +77,10 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Layer 3: Framework Bindings                            │
-│  React hooks & providers  |  Vue composables            │
-│  Angular services         |  plain TS client.on()       │
+│  @nexuvia/react  NexuviaProvider + hooks                │
+│  @nexuvia/vue    createNexuviaPlugin() + composables    │
+│  @nexuvia/angular  provideNexuvia() + services          │
+│  @nexuvia/browser  NexuviaClient (plain TS/JS)          │
 └────────────────────────┬────────────────────────────────┘
                          │ uses
 ┌────────────────────────▼────────────────────────────────┐
@@ -101,3 +112,11 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 - [React (Vite)](/frameworks/react)
 - [Vue 3](/frameworks/vue)
 - [Angular](/frameworks/angular)
+- [Browser (Plain TS/JS)](/frameworks/browser)
+
+### Framework binding packages
+
+- [`@nexuvia/react`](/packages/react) — hooks + provider
+- [`@nexuvia/vue`](/packages/vue) — composables + plugin
+- [`@nexuvia/angular`](/packages/angular) — services + module
+- [`@nexuvia/browser`](/packages/browser) — plain TS client
