@@ -33,6 +33,9 @@ npm install @nexuvia/core
 | `ok()` / `err()` | Constructors for `Result` |
 | `isOk()` / `isErr()` | Type guards |
 | `unwrapOr()` | Extract value with a fallback |
+| `unwrapOrThrow()` | Extract value or throw the error |
+| `mapOk()` | Transform `Ok` value, pass `Err` through |
+| `tapOk()` | Side-effect on `Ok` without changing the result |
 
 ---
 
@@ -61,6 +64,14 @@ emitter.emit('data', 'hello');
 
 // Unsubscribe
 off();
+```
+
+### One-time subscription
+
+```ts
+emitter.once('data', (payload) => {
+  console.log('fires once then auto-unsubscribes:', payload);
+});
 ```
 
 ### Multiple subscribers
@@ -197,6 +208,35 @@ const page = unwrapOr(await getPage('homepage'), null);
 // page is CMSPage | null
 ```
 
+### Throw on error
+
+```ts
+import { unwrapOrThrow } from '@nexuvia/core';
+
+const page = unwrapOrThrow(await getPage('homepage'));
+// throws result.error if Err, otherwise returns CMSPage
+```
+
+### Transform the value
+
+```ts
+import { mapOk } from '@nexuvia/core';
+
+const nameResult = mapOk(await getPage('homepage'), (page) => page.name);
+// Ok<string> or the original Err
+```
+
+### Side-effect without changing the result
+
+```ts
+import { tapOk } from '@nexuvia/core';
+
+const result = tapOk(await getPage('homepage'), (page) => {
+  console.log('Page fetched:', page.uid);
+});
+// result unchanged — still Ok<CMSPage> or Err
+```
+
 ---
 
 ## When to use Result vs throw
@@ -215,6 +255,7 @@ const page = unwrapOr(await getPage('homepage'), null);
 ```ts
 class EventEmitter<T extends Record<string, (...args: any[]) => void>> {
   on<K extends keyof T>(event: K, handler: T[K]): () => void;
+  once<K extends keyof T>(event: K, handler: T[K]): () => void;  // auto-unsubscribes after first call
   emit<K extends keyof T>(event: K, ...args: Parameters<T[K]>): void;
 }
 
@@ -230,4 +271,7 @@ function err<E extends Error>(error: E): Err<E>;
 function isOk<T, E>(result: Result<T, E>): result is Ok<T>;
 function isErr<T, E>(result: Result<T, E>): result is Err<E>;
 function unwrapOr<T, E>(result: Result<T, E>, fallback: T): T;
+function unwrapOrThrow<T, E extends Error>(result: Result<T, E>): T;
+function mapOk<T, U, E extends Error>(result: Result<T, E>, fn: (value: T) => U): Result<U, E>;
+function tapOk<T, E extends Error>(result: Result<T, E>, fn: (value: T) => void): Result<T, E>;
 ```

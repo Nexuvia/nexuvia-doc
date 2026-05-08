@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'wiring/overview',
+        'wiring/app',
         'wiring/config-bridge',
         'wiring/proxy-middleware',
         'wiring/occ',
@@ -38,6 +39,14 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Migration',
+      collapsed: false,
+      items: [
+        'migration/v0.1-to-v0.2',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Framework Guides',
       collapsed: true,
       items: [
@@ -49,6 +58,14 @@ const sidebars: SidebarsConfig = {
     },
   ],
   packages: [
+    {
+      type: 'category',
+      label: 'App Wiring',
+      collapsed: false,
+      items: [
+        'packages/app',
+      ],
+    },
     {
       type: 'category',
       label: 'Foundation',

@@ -26,7 +26,7 @@ npm install @nexuvia/log
 | `createLogger(namespace, config?)` | Factory that returns a scoped `Logger` |
 | `log` | Singleton logger with namespace `HyNexus` |
 | `Logger` | Logger interface |
-| `LogLevel` | `'debug' \| 'info' \| 'warn' \| 'error'` |
+| `LogLevel` | `'trace' \| 'debug' \| 'info' \| 'warn' \| 'error'` |
 | `LogEntry` | Structured log entry shape |
 | `LoggerConfig` | Config interface |
 
@@ -76,8 +76,11 @@ const apiLog = log.child('api');    // → "HyNexus:cms:api"
 
 ## Log levels
 
+Level order: `trace < debug < info < warn < error`
+
 | Level | Routes to | Used when |
 |-------|-----------|-----------|
+| `trace` | console.debug | Very detailed flow — fine-grained step tracing |
 | `debug` | stdout | Detailed flow — disabled in prod by default |
 | `info` | stdout | Notable events — cache hits, adapter calls |
 | `warn` | stderr | Non-fatal issues — cache miss, token refresh |
@@ -88,7 +91,8 @@ const apiLog = log.child('api');    // → "HyNexus:cms:api"
 Via environment variable (resolved once at module load):
 
 ```bash
-LOG_LEVEL=debug   # show all
+LOG_LEVEL=trace   # show everything
+LOG_LEVEL=debug   # show all except trace
 LOG_LEVEL=info    # default
 LOG_LEVEL=warn    # warnings + errors only
 LOG_LEVEL=error   # errors only
@@ -138,6 +142,7 @@ log.debug('Config loaded', { storeCount: 6 });
 
 ```ts
 interface Logger {
+  trace(message: string, meta?: Record<string, unknown>): void;
   debug(message: string, meta?: Record<string, unknown>): void;
   info(message: string,  meta?: Record<string, unknown>): void;
   warn(message: string,  meta?: Record<string, unknown>): void;

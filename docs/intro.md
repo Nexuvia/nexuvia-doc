@@ -24,9 +24,16 @@ Today there is no free, framework-agnostic solution for this. Existing options a
 
 ---
 
-## The 12 packages
+## The 14 packages
 
 Nexuvia is a monorepo. Each package is self-contained and independently installable.
+
+### App wiring
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/app`](/packages/app) | `NexuviaApp` — wires all clients from one config, `forRequest()` returns a typed context per request |
+| [`create-nexuvia-app`](/getting-started/quick-start) | Interactive scaffolder — `npx create-nexuvia-app my-storefront` |
 
 ### Foundation
 
@@ -44,7 +51,7 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 | [`@nexuvia/cms`](/packages/cms) | CMS page fetching, normalization, caching, component registry |
 | [`@nexuvia/smartedit`](/packages/smartedit) | SAP SmartEdit DOM contract — preview mode, postMessage, data attributes |
 | [`@nexuvia/cart`](/packages/cart) | Cart CRUD with lazy creation, cookie persistence, payload extension |
-| [`@nexuvia/product`](/packages/product) | Product detail, reviews, and 5-minute cache |
+| [`@nexuvia/product`](/packages/product) | Product detail, reviews, and configurable cache TTL |
 | [`@nexuvia/search`](/packages/search) | Full-text search, category search, query suggestions |
 
 ### Auth & Analytics

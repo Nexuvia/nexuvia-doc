@@ -106,15 +106,13 @@ const config: NexuviaConfig = {
   // ── Client auth (user sessions — Azure AD B2C) ────────────────────────────
   authClient: {
     session: {
-      cookieName:      'auth_session',
-      nonceCookieName: 'auth_nonce',
-      storeCookieName: 'auth_store',
-      encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',
+      encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',  // required
       secureCookies:   process.env.NODE_ENV === 'production',
+      // cookieName, nonceCookieName, storeCookieName — optional, defaults apply
     },
-    azure: {
-      redirectUri: process.env.AZURE_REDIRECT_URI || '',
-    },
+    // storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey),
+    // Required when using Azure AD B2C. Returns per-store Azure tenant credentials.
+    // redirectUri now lives inside AzureStoreConfig returned by this function.
   },
 
   // ── Analytics ─────────────────────────────────────────────────────────────
@@ -148,7 +146,7 @@ OAUTH_CLIENT_SECRET=your_client_secret_here
 
 # User sessions (Azure AD B2C)
 AUTH_ENCRYPTION_KEY=a-32-character-random-string-here
-AZURE_REDIRECT_URI=http://localhost:3000/auth/callback
+# Azure redirectUri now lives in AzureStoreConfig returned by storeConfigProvider
 
 # Analytics — leave empty to disable GTM in local dev
 GTM_CONTAINER_ID=
@@ -193,15 +191,43 @@ pageLabels: {
 
 ---
 
+## Cache TTL (optional)
+
+Override the default client cache durations via `cache`:
+
+```ts
+cache: {
+  cmsTtl:     10 * 60 * 1000,  // default 5 min
+  productTtl:  5 * 60 * 1000,  // no default — off unless set
+  searchTtl:   2 * 60 * 1000,  // default 2 min
+},
+```
+
+---
+
+## Validating your config
+
+After filling in `nexuvia.config.ts`, run:
+
+```bash
+npx nexuvia check
+```
+
+This validates every required field and prints a per-field pass/fail report. Fix any failures before deploying.
+
+---
+
 ## Checklist
 
 - [ ] `nexuvia.config.ts` committed to git (no secrets — only `process.env.X` references)
 - [ ] `.env.local` in `.gitignore`
 - [ ] `HYBRIS_HOST` points to your SAP Commerce instance
 - [ ] `OAUTH_CLIENT_SECRET` added to CI/CD sealed secrets
-- [ ] `AUTH_ENCRYPTION_KEY` is a random 32+ character string
+- [ ] `AUTH_ENCRYPTION_KEY` is a random 32+ character string (generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 - [ ] `USE_CMS_MOCK=true` locally, `false` in staging/prod
 - [ ] `stores` has one entry per SAP baseSite
 - [ ] `stores[x].domain` uses `NODE_ENV` ternary — `.local` hostname for dev, real domain for prod
 - [ ] `.local` hostnames added to `/etc/hosts` for local multi-store testing (see [Proxy / Middleware](/wiring/proxy-middleware#local-development--multi-store-testing))
 - [ ] `cms.pageLabels` values match Hybris impex UIDs
+- [ ] `authClient.storeConfigProvider` implemented if using Azure AD B2C user login
+- [ ] `npx nexuvia check` passes all fields

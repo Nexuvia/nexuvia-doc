@@ -17,6 +17,18 @@ CMS page fetching, normalization, caching, and component registry.
 npm install @nexuvia/cms @nexuvia/core
 ```
 
+`@nexuvia/cms` has two subpath exports to enforce the server/client boundary:
+
+```ts
+// Server Components — CmsClient, adapters, buildMetadata
+import { CmsClient, OccCmsAdapter, MockCmsAdapter, buildMetadata } from '@nexuvia/cms/server';
+
+// Client Components — component registry, template registry, EventEmitter
+import { componentRegistry, templateRegistry } from '@nexuvia/cms/client';
+```
+
+The top-level `@nexuvia/cms` import still works and exports everything, but the subpaths prevent accidentally bundling server-only code into a client bundle.
+
 ---
 
 ## How SAP Commerce CMS works
@@ -58,17 +70,17 @@ SAP CMS JSON
 
 ## What's exported
 
-| Export | What it is |
-|--------|-----------|
-| `CmsClient` | Core logic — cache, events |
-| `CmsAdapter` | Abstract base class |
-| `OccCmsAdapter` | SAP OCC implementation — server-side |
-| `MockCmsAdapter` | Local JSON mock — dev without Hybris |
-| `componentRegistry` | Plain `Map`: typeCode → component (framework-agnostic) |
-| `templateRegistry` | Maps CMS templates to layout components |
-| `normalizeCmsPage` | Transforms both SAP response shapes to `CMSPage` |
-| `buildMetadata` | Build Next.js `Metadata` from a `CMSPage` |
-| All types + enums | `CMSPage`, `CMSSlot`, `CMSComponent`, `CMSPosition`, `CMSTemplate`, `PageLabel` |
+| Export | What it is | Import path |
+|--------|-----------|-------------|
+| `CmsClient` | Core logic — cache, events | `@nexuvia/cms/server` |
+| `CmsAdapter` | Abstract base class | `@nexuvia/cms/server` |
+| `OccCmsAdapter` | SAP OCC implementation — server-side | `@nexuvia/cms/server` |
+| `MockCmsAdapter` | Local JSON mock — dev without Hybris | `@nexuvia/cms/server` |
+| `buildMetadata` | Build Next.js `Metadata` from a `CMSPage` | `@nexuvia/cms/server` |
+| `componentRegistry` | Plain `Map`: typeCode → component (framework-agnostic) | `@nexuvia/cms/client` |
+| `templateRegistry` | Maps CMS templates to layout components | `@nexuvia/cms/client` |
+| `normalizeCmsPage` | Transforms both SAP response shapes to `CMSPage` | `@nexuvia/cms` |
+| All types + enums | `CMSPage`, `CMSSlot`, `CMSComponent`, `CMSPosition`, `CMSTemplate`, `PageLabel` | `@nexuvia/cms` |
 
 ---
 
@@ -207,6 +219,28 @@ Returns a Next.js `Metadata` object populated from `page.seo` fields (`title`, `
 
 ---
 
+## Cache TTL and stale-while-revalidate
+
+`CmsClient` accepts options to control caching:
+
+```ts
+import { CmsClient, OccCmsAdapter } from '@nexuvia/cms/server';
+
+const client = new CmsClient(new OccCmsAdapter(occClient, cmsBasePath), {
+  ttl:                 10 * 60 * 1000,  // 10 min (default: 5 min)
+  staleWhileRevalidate: true,           // return stale page immediately, revalidate in background
+});
+
+// 'revalidated' fires after background revalidation completes
+client.on('revalidated', (page) => {
+  console.log('Page refreshed in background:', page.uid);
+});
+```
+
+With `staleWhileRevalidate: true`, the first call after TTL expiry returns the cached page immediately (no wait) and triggers a background fetch. The next call after the background fetch completes gets the fresh page.
+
+---
+
 ## `CmsClient` API
 
 ```ts
@@ -217,9 +251,10 @@ client.getPreviewContext(options: CmsPreviewRequestOptions): Promise<PreviewCont
 client.getComponentAttributes(options: GetAttributesOptions): Record<string, string> | null
 client.attachLivePreviewListeners(cb: () => void): () => void
 client.clearCache(): void
-client.on('page',    (page: CMSPage) => void): () => void
-client.on('preview', (ctx: PreviewContext) => void): () => void
-client.on('error',   (err: Error)    => void): () => void
+client.on('page',        (page: CMSPage) => void): () => void
+client.on('revalidated', (page: CMSPage) => void): () => void
+client.on('preview',     (ctx: PreviewContext) => void): () => void
+client.on('error',       (err: Error)    => void): () => void
 client.getState(): { currentPage, isLoading, lastError }
 ```
 

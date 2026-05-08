@@ -50,7 +50,8 @@ The cookie only holds enough information to identify the user (`id`, `email`, `n
 | Export | What it is |
 |--------|-----------|
 | `registerAuthConfig` | Register per-store Azure config |
-| `getRegisteredAuthConfig` | Retrieve the registered config |
+| `getRegisteredAuthConfig` | Retrieve the registered config (throws `ConfigError` if not registered) |
+| `assertConfigRegistered` | Guard — throws actionable `ConfigError` if `registerAuthConfig()` was never called |
 | `getAzureConfig` | Get Azure credentials for a store |
 | `getSession` | Decrypt session cookie → `SessionUser \| null` |
 | `encryptSession` | Encrypt a `SessionUser` for the cookie |
@@ -78,22 +79,19 @@ The cookie only holds enough information to identify the user (`id`, `email`, `n
 // nexuvia.config.ts
 authClient: {
   session: {
-    cookieName:      'auth_session',
-    nonceCookieName: 'auth_nonce',
-    storeCookieName: 'auth_store',
-    encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',
+    encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',  // required
     secureCookies:   process.env.NODE_ENV === 'production',
+    // cookieName, nonceCookieName, storeCookieName — optional, defaults apply
   },
-  azure: {
-    redirectUri: process.env.AZURE_REDIRECT_URI || '',
-  },
+  // storeConfigProvider is required — returns per-store Azure AD B2C credentials
+  // storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey),
 },
 ```
 
 ```bash
 # .env.local
 AUTH_ENCRYPTION_KEY=a-random-32-character-string-here
-AZURE_REDIRECT_URI=http://localhost:3000/auth/callback
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ### Step 2 — Self-register on import
@@ -102,16 +100,24 @@ Create `src/config/auth.ts`:
 
 ```ts
 import { registerAuthConfig } from '@nexuvia/auth-client';
+import type { AzureStoreConfig } from '@nexuvia/auth-client';
 import config from '../../nexuvia.config';
+
+// Returns per-store Azure AD B2C credentials — redirectUri lives here, not in nexuvia.config.ts
+async function getAzureStoreConfig(storeKey: string): Promise<AzureStoreConfig> {
+  // Fetch credentials from your backend or environment per store
+  return {
+    authority:    process.env[`AZURE_AUTHORITY_${storeKey.toUpperCase()}`] || '',
+    clientId:     process.env[`AZURE_CLIENT_ID_${storeKey.toUpperCase()}`] || '',
+    clientSecret: process.env[`AZURE_CLIENT_SECRET_${storeKey.toUpperCase()}`] || '',
+    scope:        `openid profile offline_access`,
+    redirectUri:  process.env[`AZURE_REDIRECT_URI_${storeKey.toUpperCase()}`] || '',
+  };
+}
 
 registerAuthConfig({
   session:             config.authClient.session,
-  azure:               config.authClient.azure,
-  // storeConfigProvider fetches Azure tenant credentials from Hybris per store:
-  storeConfigProvider: async (storeKey) => {
-    const response = await fetch(`${buildHybrisBaseUrl()}/customws/v2/configuration?key=azure.${storeKey}`);
-    return response.json();
-  },
+  storeConfigProvider: getAzureStoreConfig,
 });
 ```
 
@@ -267,8 +273,9 @@ interface SessionUser {
 
 ## Checklist
 
-- [ ] `nexuvia.config.ts → authClient` has all session fields + `azure.redirectUri`
-- [ ] `.env.local` has `AUTH_ENCRYPTION_KEY` (32+ chars) and `AZURE_REDIRECT_URI`
+- [ ] `nexuvia.config.ts → authClient.session.encryptionKey` set (32+ chars)
+- [ ] `authClient.storeConfigProvider` implemented — returns `AzureStoreConfig` per store including `redirectUri`
+- [ ] `.env.local` has `AUTH_ENCRYPTION_KEY`
 - [ ] `import '@/config/auth'` at the top of every auth route handler
 - [ ] Auth callback route is at `/auth/callback` (NOT `/api/auth/callback`)
 - [ ] Middleware / proxy skips `/auth/` paths

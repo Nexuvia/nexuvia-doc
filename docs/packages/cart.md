@@ -17,6 +17,16 @@ Cart management with lazy creation, cookie persistence, and payload extension.
 npm install @nexuvia/cart @nexuvia/storage @nexuvia/core
 ```
 
+`@nexuvia/cart` has two subpath exports to enforce the server/client boundary:
+
+```ts
+// Server Components / route handlers — OCC adapter
+import { OccCartAdapter, ProxyCartAdapter } from '@nexuvia/cart/server';
+
+// Client Components — CartClient + adapter interface
+import { CartClient, CartAdapter } from '@nexuvia/cart/client';
+```
+
 ---
 
 ## Architecture
@@ -221,6 +231,7 @@ const {
 ## `CartClient` direct API
 
 ```ts
+client.getCartId()                    // string | null — current cart ID
 client.setPayloadExtender(fn)         // register payload enrichment
 client.fetchCart()                    // load cart by stored ID
 client.addToCart(code, qty)           // add item (creates cart if needed)

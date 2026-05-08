@@ -389,7 +389,7 @@ async function getAzureStoreConfig(storeKey: string): Promise<AzureStoreConfig> 
     clientId,
     clientSecret,
     scope:       `openid profile offline_access ${clientId}`,
-    redirectUri: authClient.azure.redirectUri,
+    redirectUri: process.env[`AZURE_REDIRECT_URI_${storeKey.toUpperCase()}`] || '',
   };
 }
 
