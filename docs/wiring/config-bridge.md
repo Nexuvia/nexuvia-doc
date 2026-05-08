@@ -147,7 +147,7 @@ The function body is identical — only how you read cookies/headers differs:
 import { cookies }                                  from 'next/headers';
 import { OccClient }                                from '@nexuvia/occ';
 import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
 import config                                       from '../../nexuvia.config';
 import { getOccConfig, getHybrisBaseUrl }           from './hybris';
 import { getStoreConfig, getDefaultStore }          from './stores';
@@ -191,7 +191,7 @@ export function createCmsClient(occClient: OccClient): CmsClient {
 // server/config/server.ts
 import { OccClient }                                from '@nexuvia/occ';
 import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
 import config                                       from '../../nexuvia.config';
 import { getOccConfig, getHybrisBaseUrl }           from './hybris';
 import { getStoreConfig, getDefaultStore }          from './stores';
@@ -234,7 +234,7 @@ export function createCmsClient(occClient: OccClient): CmsClient {
 // server/config/server.ts (or ~/server/utils/nexuvia.ts)
 import { OccClient }                                from '@nexuvia/occ';
 import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
 import config                                       from '../../nexuvia.config';
 import { getOccConfig, getHybrisBaseUrl }           from './hybris';
 import { getStoreConfig, getDefaultStore }          from './stores';
@@ -277,7 +277,7 @@ export function createCmsClient(occClient: OccClient): CmsClient {
 // src/app/config/server.ts (used by server.ts Express handlers in Angular Universal)
 import { OccClient }                                from '@nexuvia/occ';
 import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
 import config                                       from '../../../nexuvia.config';
 import { getOccConfig, getHybrisBaseUrl }           from './hybris';
 import { getStoreConfig, getDefaultStore }          from './stores';

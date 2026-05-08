@@ -68,7 +68,7 @@ The registry is a plain `Map`. Register every `typeCode` to your UI component **
 
 ```ts
 // src/cms-defaults.ts
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import { CmsHeader }   from '@/components/cms/CmsHeader';
 import { CmsFooter }   from '@/components/cms/CmsFooter';
 import { CmsBanners }  from '@/components/cms/CmsBanners';
@@ -96,7 +96,7 @@ export function ClientLayout({ children }) { return <>{children}</>; }
 
 ```ts
 // plugins/cms-defaults.client.ts (Nuxt) or src/cms-defaults.ts (Vite)
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import CmsHeader   from '@/components/cms/CmsHeader.vue';
 import CmsFooter   from '@/components/cms/CmsFooter.vue';
 import CmsBanners  from '@/components/cms/CmsBanners.vue';
@@ -117,7 +117,7 @@ export default defineNuxtPlugin(() => {});
 
 ```ts
 // src/app/cms-defaults.ts
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import { CmsHeaderComponent }   from './components/cms/cms-header.component';
 import { CmsFooterComponent }   from './components/cms/cms-footer.component';
 import { CmsBannersComponent }  from './components/cms/cms-banners.component';
@@ -228,7 +228,7 @@ Use a resolver or service:
 ```ts
 // src/app/services/cms.service.ts
 import { Injectable } from '@angular/core';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
 import { OccClient } from '@nexuvia/occ';
 import config from '../../../nexuvia.config';
 
@@ -286,7 +286,7 @@ export const useCmsPage = () => useContext(Ctx);
 ```tsx
 // src/components/cms/CmsSlotRenderer.tsx
 'use client';
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import { useCmsPage }        from '@/providers/cms-provider';
 
 export function CmsSlotRenderer({ position }: { position: string }) {
@@ -337,7 +337,7 @@ provide('cms-page', toRef(props, 'page'));
 import { inject, computed } from 'vue';
 import type { Ref } from 'vue';
 import type { CMSPage } from '@nexuvia/cms';
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 
 const props = defineProps<{ position: string }>();
 const page = inject<Ref<CMSPage | null>>('cms-page');
@@ -362,7 +362,7 @@ const resolve = (typeCode: string) => componentRegistry.resolve(typeCode);
 // src/app/components/cms/cms-slot-renderer.component.ts
 import { Component, Input, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import type { CMSPage } from '@nexuvia/cms';
 
 @Component({

@@ -69,7 +69,7 @@ Framework binding   React: CartProvider + useCart()
 
 ```tsx
 // src/app/[lang]/store-layout-client.tsx
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage } from '@nexuvia/storage';
 import { CartProvider } from '@/providers/cart-provider';
 
@@ -192,7 +192,7 @@ const { error, addItem } = useCart();
 // src/app/api/cart/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteOccClient } from '@/config/api-helpers';
-import { OccCartAdapter } from '@nexuvia/cart';
+import { OccCartAdapter } from '@nexuvia/cart/server';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

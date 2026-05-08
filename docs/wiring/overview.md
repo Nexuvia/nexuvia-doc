@@ -102,6 +102,21 @@ Wire libraries in this order — later libraries depend on earlier ones:
 
 ---
 
+## Framework binding packages (optional shortcut)
+
+The `@nexuvia/react`, `@nexuvia/vue`, `@nexuvia/angular`, and `@nexuvia/browser` packages ship pre-built Layer 3 wrappers. Installing one of them eliminates the need to write your own providers, composables, or services manually.
+
+| Package | What it provides |
+| ------- | ---------------- |
+| `@nexuvia/react` | `NexuviaProvider` + hooks: `useCart`, `useAuth`, `useStore`, `useCmsPage`, `useAnalytics`, `useSmartEdit` |
+| `@nexuvia/vue` | `createNexuviaPlugin()` + composables: `useCart`, `useAuth`, `useStore`, `useAnalytics`, `useSmartEdit` |
+| `@nexuvia/angular` | `provideNexuvia()` / `NexuviaModule.forRoot()` + services: `CartService`, `AuthService`, `AnalyticsService`, `StoreService` |
+| `@nexuvia/browser` | `NexuviaClient` with `.cart`, `.search`, `.product`, `.analytics` sub-clients |
+
+If you use one of these packages, you can skip the manual Layer 3 wiring steps. Layers 1 and 2 (config bridge and server endpoints) are still required regardless.
+
+---
+
 ## The provider/service tree (Layer 3)
 
 In React, Vue, and Angular, Layer 3 wrappers must nest in a specific order — later wrappers depend on earlier ones:

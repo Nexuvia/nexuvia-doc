@@ -114,7 +114,7 @@ cms: {
 
 ```ts
 // src/app/_cms-defaults.ts
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import { CmsHeaderComponent }   from '@/components/cms/CmsHeaderComponent';
 import { CmsFooterComponent }   from '@/components/cms/CmsFooterComponent';
 
@@ -150,7 +150,7 @@ export default async function HomePage({ params }) {
 ```tsx
 'use client';
 
-import { CmsPageProvider, CmsSlotRenderer, CMSPosition } from '@nexuvia/cms';
+import { CmsPageProvider, CmsSlotRenderer, CMSPosition } from '@nexuvia/cms/client';
 import type { CMSPage } from '@nexuvia/cms';
 
 export function HomePageClient({ page }: { page: CMSPage }) {
@@ -196,7 +196,7 @@ The JSON must be a valid SAP OCC CMS page response. Both wrapped (`contentSlots.
 The `componentRegistry` is a plain `Map` — not React-specific. Register any value (Vue component, Angular class, string):
 
 ```ts
-import { componentRegistry } from '@nexuvia/cms';
+import { componentRegistry } from '@nexuvia/cms/client';
 import HeaderVue from './CmsHeader.vue';
 
 componentRegistry.register('CMSHeaderComponent', HeaderVue as any);
@@ -207,7 +207,7 @@ componentRegistry.register('CMSHeaderComponent', HeaderVue as any);
 ## SEO metadata (Next.js)
 
 ```ts
-import { buildMetadata } from '@nexuvia/cms';
+import { buildMetadata } from '@nexuvia/cms/server';
 
 export async function generateMetadata({ params }) {
   // ... fetch page ...

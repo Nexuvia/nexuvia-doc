@@ -38,9 +38,9 @@ authClient: {
     encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',
     secureCookies:   process.env.NODE_ENV === 'production',
   },
-  azure: {
-    redirectUri: process.env.AZURE_REDIRECT_URI || '',
-  },
+  // storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey),
+  // Required when using Azure AD B2C. Returns per-store Azure tenant credentials.
+  // redirectUri lives inside AzureStoreConfig returned by this function — NOT in top-level config.
 },
 ```
 
@@ -48,7 +48,8 @@ authClient: {
 
 ```bash
 AUTH_ENCRYPTION_KEY=use-a-random-32-character-string
-AZURE_REDIRECT_URI=http://localhost:3000/auth/callback
+# redirectUri is returned per-store from storeConfigProvider, e.g.:
+AZURE_REDIRECT_URI_AE=http://localhost:3000/auth/callback
 ```
 
 Generate the key once and keep it stable across server restarts:
@@ -674,7 +675,7 @@ return isLoggedIn
 |-------|-------|-----|
 | `getRegisteredAuthConfig: no config registered` | Forgot `import 'config/auth'` | Add as first line of route handler |
 | Callback returns `?auth_error=csrf_failed` | Nonce cookie was lost | Check proxy/middleware skips `/auth/` |
-| Callback returns `?auth_error=token_exchange_failed` | Wrong Azure config | Verify `AZURE_REDIRECT_URI` matches Azure's registered URI |
+| Callback returns `?auth_error=token_exchange_failed` | Wrong Azure config | Verify `redirectUri` in `AzureStoreConfig` returned by `storeConfigProvider` matches Azure's registered URI |
 | User logged out after page refresh | `AUTH_ENCRYPTION_KEY` regenerates | Use a stable env var |
 | `useAuth() must be used inside <AuthProvider>` | Missing Layer 3 wrapper | Wrap your app with `<AuthProvider>` |
 
@@ -687,6 +688,6 @@ return isLoggedIn
 - [ ] `import 'config/auth'` is the first line of every auth route
 - [ ] Routing layer skips `/auth/` paths
 - [ ] `AUTH_ENCRYPTION_KEY` is set and stable
-- [ ] `AZURE_REDIRECT_URI` matches Azure's registered URI
+- [ ] `redirectUri` in `AzureStoreConfig` (returned by `storeConfigProvider`) matches Azure's registered URI per store
 - [ ] Auth wrapper is **outside** the Cart wrapper in your provider tree
 - [ ] For SSR: server layout reads session and passes `initialUser` to the wrapper

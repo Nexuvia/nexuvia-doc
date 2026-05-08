@@ -45,13 +45,24 @@ Commit `.npmrc` (it contains no secrets — only the variable reference `${NODE_
 
 ## 2. Install Nexuvia
 
-Install the single umbrella package. It includes all 13 libraries and the CLI:
+Install the single umbrella package. It includes all 17 libraries and the CLI:
 
 ```bash
 npm install @nexuvia/nexuvia
 ```
 
 After install, a `postinstall` script runs automatically and creates a blank `nexuvia.config.ts` at your project root if one does not already exist.
+
+If you use a specific framework, you can also install the optional framework binding package for first-class hooks and providers:
+
+```bash
+npm install @nexuvia/react     # React: NexuviaProvider + useCart, useAuth, useStore, useCmsPage, useAnalytics, useSmartEdit
+npm install @nexuvia/vue       # Vue 3: createNexuviaPlugin() + composables
+npm install @nexuvia/angular   # Angular: provideNexuvia() / NexuviaModule.forRoot() + services
+npm install @nexuvia/browser   # Vanilla JS / browser: NexuviaClient with .cart, .search, .product, .analytics
+```
+
+These packages are optional — you can always wire providers manually (see the [Wiring section](/wiring/overview)).
 
 ---
 

@@ -46,7 +46,7 @@ Create `src/app/api/cart/route.ts`:
 ```ts
 import { NextRequest, NextResponse }   from 'next/server';
 import { createRouteOccClient }        from '@/config/api-helpers';
-import { OccCartAdapter }              from '@nexuvia/cart';
+import { OccCartAdapter }              from '@nexuvia/cart/server';
 import { NotFoundError, AdapterError } from '@nexuvia/core';
 
 function adapter(req: NextRequest, baseSite?: string, lang?: string) {
@@ -100,7 +100,7 @@ Create `server/routes/cart.ts`:
 ```ts
 import { Router }                      from 'express';
 import { createRouteOccClient }        from '../config/api-helpers';
-import { OccCartAdapter }              from '@nexuvia/cart';
+import { OccCartAdapter }              from '@nexuvia/cart/server';
 import { NotFoundError }               from '@nexuvia/core';
 
 const router = Router();
@@ -168,7 +168,7 @@ app.listen(3001);
 Create `server/api/cart.ts`:
 
 ```ts
-import { OccCartAdapter }       from '@nexuvia/cart';
+import { OccCartAdapter }       from '@nexuvia/cart/server';
 import { NotFoundError }        from '@nexuvia/core';
 import { createRouteOccClient } from '~/config/api-helpers';
 
@@ -221,7 +221,7 @@ Add Express handlers in your `server.ts`:
 ```ts
 // server.ts (Angular Universal)
 import express                  from 'express';
-import { OccCartAdapter }       from '@nexuvia/cart';
+import { OccCartAdapter }       from '@nexuvia/cart/server';
 import { NotFoundError }        from '@nexuvia/core';
 import { createRouteOccClient } from './src/app/config/api-helpers';
 
@@ -277,7 +277,7 @@ Create `src/providers/cart-provider.tsx`:
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import type { CartClient, CartClientState } from '@nexuvia/cart';
+import type { CartClient, CartClientState } from '@nexuvia/cart/client';
 
 const CartContext = createContext<any>(null);
 
@@ -318,7 +318,7 @@ Construct the client once in your layout:
 // In your root client layout
 'use client';
 import { useMemo } from 'react';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage }                from '@nexuvia/storage';
 import { CartProvider }                 from '@/providers/cart-provider';
 
@@ -339,8 +339,8 @@ Create `composables/useCart.ts`:
 
 ```ts
 import { ref, onUnmounted } from 'vue';
-import type { Cart } from '@nexuvia/cart';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import type { Cart } from '@nexuvia/cart/client';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage } from '@nexuvia/storage';
 import config from '../../nexuvia.config';
 
@@ -393,8 +393,8 @@ Create `src/app/services/cart.service.ts`:
 ```ts
 import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import type { Cart } from '@nexuvia/cart';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import type { Cart } from '@nexuvia/cart/client';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage } from '@nexuvia/storage';
 import config from '../../../nexuvia.config';
 

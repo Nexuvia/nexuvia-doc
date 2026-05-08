@@ -42,11 +42,14 @@ AnalyticsClient — typed helpers, error capture, SSR queue
 Thin wrappers that **subscribe** to core service events and translate them into framework-specific reactive state.
 
 ```
-React     — useCart(), useProduct(), useSearch(), useCmsPage(), useAnalytics()
-Vue 3     — composables wrapping client.on()
-Angular   — @Injectable services wrapping client
-Plain TS  — client.on() directly
+@nexuvia/react    — NexuviaProvider + hooks: useCart, useAuth, useStore, useCmsPage, useAnalytics, useSmartEdit
+@nexuvia/vue      — createNexuviaPlugin() + composables: useCart, useAuth, useStore, useAnalytics, useSmartEdit
+@nexuvia/angular  — provideNexuvia() / NexuviaModule.forRoot() + services: CartService, AuthService, AnalyticsService, StoreService
+@nexuvia/browser  — NexuviaClient with .cart, .search, .product, .analytics sub-clients (vanilla JS / SPA)
+Plain TS          — client.on() directly (no binding package needed)
 ```
+
+The framework binding packages are optional — you can wire providers manually instead (see [Wiring Overview](/wiring/overview)).
 
 ---
 

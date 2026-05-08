@@ -132,7 +132,7 @@ storage.get('key');
 
 ```ts
 import { MemoryStorage } from '@nexuvia/storage';
-import { CartClient, ProxyCartAdapter } from '@nexuvia/cart';
+import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 
 const storage = new MemoryStorage();
 const client  = new CartClient(new ProxyCartAdapter({ baseSite: 'test', language: 'en' }), storage);
