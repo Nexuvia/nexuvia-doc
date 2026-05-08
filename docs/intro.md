@@ -1,0 +1,97 @@
+---
+id: intro
+title: Introduction
+sidebar_position: 1
+---
+
+# Nexuvia
+
+**Nexuvia** is a free, open-source TypeScript library that connects any headless frontend to **SAP Commerce Cloud (Hybris)**.
+
+Today there is no free, framework-agnostic solution for this. Existing options are either proprietary (Spartacus is Angular-only, tightly coupled to SAP) or require buying into a specific vendor stack. Nexuvia fills that gap.
+
+---
+
+## What Nexuvia is
+
+| Property | Description |
+|----------|-------------|
+| **Framework-agnostic** | Works with Next.js, React, Vue 3, Angular, or plain TypeScript |
+| **Backend-flexible** | Works with standard OCC, custom Hybris endpoints, or any SAP Commerce variant |
+| **Zero dependencies** | Core library has no runtime npm dependencies |
+| **Adapter-driven** | Swap the adapter, keep all your business logic |
+| **Incrementally adoptable** | Use one package or all of them |
+
+---
+
+## The 12 packages
+
+Nexuvia is a monorepo. Each package is self-contained and independently installable.
+
+### Foundation
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/core`](/packages/core) | EventEmitter, error hierarchy, Result type — shared by all libraries |
+| [`@nexuvia/log`](/packages/log) | Structured logging — namespace scoping, log levels, pretty/JSON format |
+| [`@nexuvia/storage`](/packages/storage) | SSR-safe storage adapters — Cookie, LocalStorage, Memory |
+| [`@nexuvia/occ`](/packages/occ) | HTTP client for SAP OCC APIs — URL building, auth header injection, error handling |
+
+### Commerce
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/cms`](/packages/cms) | CMS page fetching, normalization, caching, component registry |
+| [`@nexuvia/smartedit`](/packages/smartedit) | SAP SmartEdit DOM contract — preview mode, postMessage, data attributes |
+| [`@nexuvia/cart`](/packages/cart) | Cart CRUD with lazy creation, cookie persistence, payload extension |
+| [`@nexuvia/product`](/packages/product) | Product detail, reviews, and 5-minute cache |
+| [`@nexuvia/search`](/packages/search) | Full-text search, category search, query suggestions |
+
+### Auth & Analytics
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/auth-server`](/packages/auth-server) | Server-to-backend OAuth 2.0 `client_credentials` token with in-memory cache |
+| [`@nexuvia/auth-client`](/packages/auth-client) | User auth via Azure AD B2C — Authorization Code flow, encrypted session cookie |
+| [`@nexuvia/analytics`](/packages/analytics) | Analytics event tracking — GTM adapter, typed events, SSR queue |
+
+---
+
+## Three-layer architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Layer 3: Framework Bindings                            │
+│  React hooks & providers  |  Vue composables            │
+│  Angular services         |  plain TS client.on()       │
+└────────────────────────┬────────────────────────────────┘
+                         │ uses
+┌────────────────────────▼────────────────────────────────┐
+│  Layer 2: Core Services  (@nexuvia/core)                │
+│  CmsClient, CartClient, ProductClient,                  │
+│  SearchClient, AuthService, AnalyticsClient             │
+│  Pure TypeScript. No React. No DOM. No framework.       │
+└────────────────────────┬────────────────────────────────┘
+                         │ uses
+┌────────────────────────▼────────────────────────────────┐
+│  Layer 1: Adapters                                      │
+│  OccCmsAdapter, OccCartAdapter, GtmAnalyticsAdapter … │
+│  Translate backend responses into generic Nexuvia types │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Rule:** each layer can only depend on the layer below it. Never sideways, never up.
+
+---
+
+## Next steps
+
+- [Quick Start](/getting-started/quick-start) — install and run in 5 minutes
+- [Configuration](/getting-started/configuration) — `nexuvia.config.ts` reference
+- [Architecture](/getting-started/architecture) — deep-dive into the three layers
+
+### Framework guides
+- [Next.js (App Router)](/frameworks/nextjs)
+- [React (Vite)](/frameworks/react)
+- [Vue 3](/frameworks/vue)
+- [Angular](/frameworks/angular)

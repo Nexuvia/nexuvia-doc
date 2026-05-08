@@ -1,0 +1,49 @@
+/* Nexuvia brand — deep blue-violet primary */
+:root {
+  --ifm-color-primary: #5b6cff;
+  --ifm-color-primary-dark: #3f52ff;
+  --ifm-color-primary-darker: #3146ff;
+  --ifm-color-primary-darkest: #0d23ff;
+  --ifm-color-primary-light: #7786ff;
+  --ifm-color-primary-lighter: #8592ff;
+  --ifm-color-primary-lightest: #aeb6ff;
+  --ifm-code-font-size: 94%;
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  --docusaurus-highlighted-code-line-bg: rgba(91, 108, 255, 0.08);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #7786ff;
+  --ifm-color-primary-dark: #5b6cff;
+  --ifm-color-primary-darker: #4d60ff;
+  --ifm-color-primary-darkest: #2238ff;
+  --ifm-color-primary-light: #93a0ff;
+  --ifm-color-primary-lighter: #a1acff;
+  --ifm-color-primary-lightest: #c5cbff;
+  --ifm-background-color: #0f1117;
+  --ifm-background-surface-color: #161b27;
+  --docusaurus-highlighted-code-line-bg: rgba(119, 134, 255, 0.12);
+}
+
+/* Tighten table cells */
+table th,
+table td {
+  padding: 0.55rem 0.9rem;
+}
+
+/* Slightly smaller inline code */
+code {
+  font-size: 0.88em;
+  border-radius: 4px;
+}
+
+/* Wider content on package reference pages */
+.theme-doc-markdown {
+  max-width: 900px;
+}
+
+/* Navbar brand emphasis */
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
