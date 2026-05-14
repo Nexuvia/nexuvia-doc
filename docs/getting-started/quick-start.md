@@ -45,7 +45,7 @@ Commit `.npmrc` (it contains no secrets — only the variable reference `${NODE_
 
 ## 2. Install Nexuvia
 
-Install the single umbrella package. It includes all 17 libraries and the CLI:
+Install the single umbrella package. It includes all 19 libraries and the CLI:
 
 ```bash
 npm install @nexuvia/nexuvia

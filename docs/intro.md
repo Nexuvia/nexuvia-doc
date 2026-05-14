@@ -24,7 +24,7 @@ Today there is no free, framework-agnostic solution for this. Existing options a
 
 ---
 
-## The 17 packages
+## The 19 packages
 
 Nexuvia is a monorepo. Each package is self-contained and independently installable.
 
@@ -69,6 +69,13 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 | [`@nexuvia/vue`](/packages/vue) | `createNexuviaPlugin()` — Vue plugin that exposes all composables with no manual wiring |
 | [`@nexuvia/angular`](/packages/angular) | `provideNexuvia()` / `NexuviaModule` — Angular standalone and NgModule APIs |
 | [`@nexuvia/browser`](/packages/browser) | `NexuviaClient` — plain TS/JS class, no framework, full sub-client API |
+
+### Tooling
+
+| Package | What it does |
+|---------|-------------|
+| [`@nexuvia/di`](/packages/di) | Framework-agnostic DI container — `Token<T>` + `Container`, singleton and scoped lifetimes, no decorators |
+| [`@nexuvia/codemod`](/packages/codemod) | Migration CLI — automated AST transforms for breaking changes across Nexuvia versions |
 
 ---
 
@@ -120,3 +127,8 @@ Nexuvia is a monorepo. Each package is self-contained and independently installa
 - [`@nexuvia/vue`](/packages/vue) — composables + plugin
 - [`@nexuvia/angular`](/packages/angular) — services + module
 - [`@nexuvia/browser`](/packages/browser) — plain TS client
+
+### Tooling packages
+
+- [`@nexuvia/di`](/packages/di) — framework-agnostic DI container
+- [`@nexuvia/codemod`](/packages/codemod) — migration CLI

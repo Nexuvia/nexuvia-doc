@@ -187,3 +187,48 @@ export class ContentfulCmsAdapter extends CmsAdapter {
 const adapter = new ContentfulCmsAdapter(contentfulClient);
 const client  = new CmsClient(adapter);
 ```
+
+---
+
+## Dependency injection (optional)
+
+`@nexuvia/di` is an opt-in DI container for your own application services. It is not required to use any Nexuvia library — it sits alongside the three-layer architecture rather than inside it.
+
+```ts
+import { Container, Token } from '@nexuvia/di';
+
+const DbToken      = new Token<Database>('Database');
+const ServiceToken = new Token<UserService>('UserService');
+
+const container = new Container();
+container.register(DbToken,      () => new Database(process.env.DATABASE_URL!), 'singleton');
+container.register(ServiceToken, (c) => new UserService(c.get(DbToken)),        'singleton');
+container.validate(); // throws at startup if any token is missing
+
+const service = container.get(ServiceToken);
+```
+
+Use `createScope()` to get a fresh container per request that shares singletons:
+
+```ts
+const scope   = container.createScope();
+const service = scope.get(ServiceToken); // singleton — shared instance
+const ctx     = scope.get(RequestCtxToken); // scoped — fresh per request
+```
+
+See [`@nexuvia/di`](/packages/di) for the full API reference.
+
+---
+
+## Monorepo build caching (Turborepo)
+
+The Nexuvia monorepo uses **Turborepo** for task orchestration and build caching. Individual package builds are cached by input hash — only packages affected by a change are rebuilt.
+
+```bash
+pnpm build          # turbo run build — rebuilds only changed packages
+pnpm typecheck      # turbo run typecheck
+pnpm test           # turbo run test
+pnpm docs:api       # turbo run docs:api — generates TypeDoc HTML in docs-api/
+```
+
+This does not affect how you use Nexuvia in your application — it only speeds up CI and local development inside the monorepo itself.

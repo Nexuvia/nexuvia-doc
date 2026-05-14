@@ -118,6 +118,8 @@ const config: Config = {
             { label: '@nexuvia/cms', to: '/packages/cms' },
             { label: '@nexuvia/cart', to: '/packages/cart' },
             { label: '@nexuvia/analytics', to: '/packages/analytics' },
+            { label: '@nexuvia/di', to: '/packages/di' },
+            { label: '@nexuvia/codemod', to: '/packages/codemod' },
           ],
         },
       ],

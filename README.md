@@ -1,41 +1,54 @@
-# Website
+# Nexuvia Docs
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Documentation site for **Nexuvia** — the open-source, framework-agnostic TypeScript library stack for SAP Commerce Cloud (Hybris).
 
-## Installation
+Built with [Docusaurus](https://docusaurus.io/).
 
-```bash
-yarn
-```
+---
 
-## Local Development
+## Local development
 
 ```bash
-yarn start
+npm install
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Opens `http://localhost:3000`. Most changes are reflected live without a restart.
 
 ## Build
 
 ```bash
-yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Generates static output in `build/`. Serve with any static host.
+
+## Content structure
+
+```text
+docs/
+  intro.md                    ← Introduction and package list
+  getting-started/
+    quick-start.md
+    configuration.md
+    architecture.md
+  frameworks/                 ← Per-framework assembly guides
+    nextjs.md
+    react.md
+    vue.md
+    angular.md
+    browser.md
+  wiring/                     ← Per-library wiring guides
+    overview.md
+    app.md, config-bridge.md, ...
+  packages/                   ← Full API reference per package
+    core.md, log.md, di.md, codemod.md, ...
+```
 
 ## Deployment
 
-Using SSH:
-
 ```bash
-USE_SSH=true yarn deploy
+GIT_USER=<your-github-username> npm run deploy
 ```
 
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Builds and pushes to the `gh-pages` branch.

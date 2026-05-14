@@ -3,83 +3,105 @@ title: React (Vite / CRA)
 sidebar_position: 2
 ---
 
-# React — Assembly Guide
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
-Install `@nexuvia/react` and use `<NexuviaProvider>` — no manual provider wiring needed.
+## React — Complete Wiring Guide
 
-:::warning Read this first
-**A pure React SPA cannot run Nexuvia by itself.** Two things require a server:
+This guide covers a **React SPA** wired with a separate Node.js backend (Express or Hono). It includes all frontend provider setup, every hook, and every required server route.
 
-1. **`@nexuvia/auth-server`** — must hold the OAuth `client_secret` (browser cannot)
+:::warning A React SPA cannot run Nexuvia alone
+Two things always require a server:
+
+1. **`@nexuvia/auth-server`** — the OAuth `client_secret` must never reach the browser
 2. **`@nexuvia/cart`** — SAP OCC blocks browser calls with CORS
 
-You need a thin backend (Express, Hono, Fastify, or any other Node.js framework) to host the route handlers. The React app calls your backend, which calls SAP. **Nexuvia in pure SPA mode = mock adapters only.**
+You need a thin Node.js backend alongside your Vite dev server. If you want a single integrated server, use [Next.js](/frameworks/nextjs) instead.
 
-If you want full SAP integration with no separate backend, use [Next.js](/frameworks/nextjs) instead.
+**What works in browser-only mode (mock adapters):** `cms`, `product`, `search`, `analytics`, `storage`, `core`, `log`.
 :::
 
 ---
 
-## What works in pure SPA mode
-
-| Library | Pure SPA | Needs backend |
-|---------|---------|---------------|
-| `@nexuvia/core` | ✅ | — |
-| `@nexuvia/log` | ✅ | — |
-| `@nexuvia/storage` | ✅ | — |
-| `@nexuvia/cms` (with `MockCmsAdapter`) | ✅ | OCC adapter needs server |
-| `@nexuvia/product` (with `MockProductAdapter`) | ✅ | OCC adapter needs server |
-| `@nexuvia/search` (with `MockSearchAdapter`) | ✅ | OCC adapter needs server |
-| `@nexuvia/analytics` (GTM) | ✅ | — |
-| `@nexuvia/smartedit` | ✅ | — |
-| `@nexuvia/cart` | ❌ | Always — CORS |
-| `@nexuvia/auth-server` | ❌ | Always — secret can't leak |
-| `@nexuvia/auth-client` | ❌ | Always — needs callback route |
-
----
-
-## Installation
+## Prerequisites
 
 ```bash
-pnpm add @nexuvia/react
-```
+# React app
+npm install @nexuvia/react @nexuvia/analytics
 
-Peer dependencies: `react >= 18`, `react-dom >= 18`.
+# Node.js backend (Express example)
+npm install @nexuvia/app express cors
+```
 
 ---
 
-## Step 1 — Wrap your app with `NexuviaProvider`
+## Project structure
 
-`NexuviaProvider` handles all internal provider nesting in the correct order. Pass it your store config and it wires everything for you:
+```text
+my-storefront/
+├── nexuvia.config.ts          ← Shared config (used by both app + server)
+├── nexuvia.app.ts             ← NexuviaApp singleton — backend only
+├── .env                       ← Frontend safe vars (VITE_*)
+├── .env.server                ← Backend secrets — never expose to browser
+│
+├── src/                       ← React app (Vite)
+│   ├── main.tsx
+│   ├── App.tsx                ← NexuviaProvider lives here
+│   ├── plugins/
+│   │   └── cms-defaults.ts    ← Register CMS components once
+│   └── components/
+│
+└── server/                    ← Express backend
+    ├── index.ts               ← App setup + middleware
+    ├── config/
+    │   ├── server.ts          ← createServerOccClient factory
+    │   └── auth.ts            ← registerAuthConfig (self-registers)
+    └── routes/
+        ├── auth.ts            ← /api/auth/login, /callback, /session, /logout
+        └── cart.ts            ← /api/cart (GET, POST, PATCH, DELETE)
+```
+
+---
+
+## Part A — Frontend (React + Vite)
+
+### Step 1 — Wrap the app with `NexuviaProvider`
 
 ```tsx
 // src/App.tsx
 import { NexuviaProvider } from '@nexuvia/react';
-import { ProxyCartAdapterConfig } from '@nexuvia/cart/client';
-import { GtmScript } from '@nexuvia/analytics';
-import { Router } from '@/router';
-import config from '../nexuvia.config';
+import { GtmScript }       from '@nexuvia/analytics';
+import { Router }          from '@/router';
+import './plugins/cms-defaults';   // side-effect: registers CMS components
 
-const store = config.stores.default;
-
-const cartClientConfig: ProxyCartAdapterConfig = {
-  baseSite: store.baseSite,
-  language: store.defaultLanguage,
-  apiBase:  import.meta.env.VITE_API_BASE + '/api/cart',
-};
+const STORE_KEY   = 'default';
+const LANGUAGE    = 'en';
+const BASE_SITE   = import.meta.env.VITE_BASE_SITE  ?? 'my-basesite';
+const GTM_ID      = import.meta.env.VITE_GTM_ID     ?? '';
+const API_BASE    = import.meta.env.VITE_API_BASE   ?? 'http://localhost:3001';
 
 export function App() {
   return (
     <>
-      {config.analytics.gtmContainerId && (
-        <GtmScript containerId={config.analytics.gtmContainerId} />
-      )}
+      {GTM_ID && <GtmScript containerId={GTM_ID} />}
       <NexuviaProvider
-        storeKey="default"
-        language={store.defaultLanguage}
-        storeConfig={store}
-        cartClientConfig={cartClientConfig}
-        gtmContainerId={config.analytics.gtmContainerId}
+        storeKey={STORE_KEY}
+        language={LANGUAGE}
+        storeConfig={{
+          baseSite:           BASE_SITE,
+          domain:             window.location.hostname,
+          supportedLanguages: [LANGUAGE],
+          defaultLanguage:    LANGUAGE,
+          currency:           'USD',
+          country:            'US',
+          isEcommerce:        true,
+        }}
+        cartClientConfig={{
+          baseSite: BASE_SITE,
+          language: LANGUAGE,
+          apiBase:  `${API_BASE}/api/cart`,
+        }}
+        gtmContainerId={GTM_ID}
       >
         <Router />
       </NexuviaProvider>
@@ -88,42 +110,62 @@ export function App() {
 }
 ```
 
-That's it. No manual `CartProvider`, `AuthProvider`, `AnalyticsProvider`, or `StoreProvider` needed.
+`NexuviaProvider` handles all internal nesting automatically:
 
----
+```text
+StoreProvider → AuthProvider → CartProvider → AnalyticsProvider → children
+```
 
-## Step 2 — Use hooks in components
+### Step 2 — Register CMS components
 
-All hooks are exported directly from `@nexuvia/react`.
+```ts
+// src/plugins/cms-defaults.ts
+import { componentRegistry } from '@nexuvia/cms/client';
+import { CmsHeaderComponent }  from '@/components/cms/CmsHeader';
+import { CmsFooterComponent }  from '@/components/cms/CmsFooter';
+import { CmsBannersComponent } from '@/components/cms/CmsBanners';
 
-### `useCart`
+componentRegistry.register('CMSHeaderComponent',  CmsHeaderComponent);
+componentRegistry.register('CMSFooterComponent',  CmsFooterComponent);
+componentRegistry.register('CMSBannersComponent', CmsBannersComponent);
+// One line per typeCode in nexuvia.config.ts → cms.componentTypes
+```
+
+### Step 3 — Use hooks in components
 
 ```tsx
-'use client';
+// src/components/AddToCartButton.tsx
+import { useCart, useAnalytics } from '@nexuvia/react';
 
-import { useCart } from '@nexuvia/react';
-
-export function AddToCartButton({ productCode }: { productCode: string }) {
+export function AddToCartButton({ code, name, price }: {
+  code: string; name: string; price?: number;
+}) {
   const { addItem, isLoading } = useCart();
+  const { track }              = useAnalytics();
+
+  const handleClick = async () => {
+    await addItem(code, 1);
+    track({ type: 'add_to_cart', code, name, quantity: 1, price });
+  };
 
   return (
-    <button onClick={() => addItem(productCode, 1)} disabled={isLoading}>
+    <button onClick={handleClick} disabled={isLoading}>
       {isLoading ? 'Adding…' : 'Add to Cart'}
     </button>
   );
 }
 ```
 
-### `useAuth`
-
 ```tsx
-import { useAuth } from '@nexuvia/react';
+// src/components/UserMenu.tsx
+import { useAuth, useStore } from '@nexuvia/react';
 
 export function UserMenu() {
   const { user, login, logout } = useAuth();
+  const { storeKey }            = useStore();
 
   if (!user) {
-    return <button onClick={() => login('default')}>Sign in</button>;
+    return <button onClick={() => login(storeKey)}>Sign in</button>;
   }
   return (
     <div>
@@ -134,178 +176,439 @@ export function UserMenu() {
 }
 ```
 
-### `useStore`
-
 ```tsx
-import { useStore } from '@nexuvia/react';
+// src/components/CartBadge.tsx
+import { useEffect } from 'react';
+import { useCart } from '@nexuvia/react';
 
-export function StoreBadge() {
-  const { storeKey, language, storeConfig } = useStore();
-  return <span>{storeConfig.currency} — {language.toUpperCase()}</span>;
+export function CartBadge() {
+  const { cart, fetchCart } = useCart();
+
+  useEffect(() => { fetchCart(); }, []);
+
+  return <span>{cart?.totalItems ?? 0}</span>;
 }
 ```
 
-### `useCmsPage`
+### Step 4 — CMS fetching (client-side with mock adapter)
+
+For a pure SPA, CMS pages are fetched client-side with `MockCmsAdapter`:
 
 ```tsx
-import { useCmsPage } from '@nexuvia/react';
+// src/pages/HomePage.tsx
+import { useEffect, useState } from 'react';
+import { CmsClient, MockCmsAdapter } from '@nexuvia/cms/server';
+import { CmsPageProvider, CmsSlotRenderer, CMSPosition } from '@nexuvia/cms/client';
+import type { CMSPage } from '@nexuvia/cms';
+
+const cmsClient = new CmsClient(new MockCmsAdapter(async (label) => {
+  // Load from /public/mock/{label}.json
+  const res = await fetch(`/mock/${label}.json`);
+  return res.ok ? res.json() : null;
+}));
 
 export function HomePage() {
-  const { page } = useCmsPage();
+  const [page, setPage] = useState<CMSPage | null>(null);
 
-  if (!page) return <p>Page not found.</p>;
-  return <h1>{page.name}</h1>;
-}
-```
+  useEffect(() => {
+    cmsClient.getContentPage('homepage').then(setPage);
+  }, []);
 
-### `useAnalytics`
-
-```tsx
-import { useAnalytics } from '@nexuvia/react';
-
-export function ProductCard({ product }) {
-  const { track } = useAnalytics();
+  if (!page) return <p>Loading…</p>;
 
   return (
-    <div onClick={() => track({ type: 'productClick', code: product.code, name: product.name })}>
-      <h2>{product.name}</h2>
-      <button onClick={() => track({ type: 'addToCart', code: product.code, name: product.name, quantity: 1 })}>
-        Add to Cart
-      </button>
-    </div>
+    <CmsPageProvider page={page}>
+      <CmsSlotRenderer position={CMSPosition.HEADER} />
+      <main>
+        <CmsSlotRenderer position={CMSPosition.CONTENT} />
+      </main>
+      <CmsSlotRenderer position={CMSPosition.FOOTER} />
+    </CmsPageProvider>
   );
 }
 ```
 
-### `useSmartEdit`
+To use a live Hybris CMS, replace with `OccCmsAdapter` — but note this requires your backend proxy to serve the CMS request (CORS).
+
+### Step 5 — Product and search (direct or proxied)
 
 ```tsx
-import { useSmartEdit } from '@nexuvia/react';
+// src/pages/ProductPage.tsx
+import { useEffect, useState } from 'react';
+import { ProductClient, OccProductAdapter } from '@nexuvia/product';
+import { OccClient } from '@nexuvia/occ';
 
-export function EditableSlot({ children }) {
-  const { isPreview } = useSmartEdit();
-  return (
-    <div data-preview={isPreview}>
-      {children}
-    </div>
-  );
+// Point at your backend proxy — not SAP directly (CORS)
+const occ = new OccClient(
+  { baseUrl: import.meta.env.VITE_API_BASE, basePath: '/occ-proxy', version: 'v2' },
+  import.meta.env.VITE_BASE_SITE,
+  'en',
+);
+const productClient = new ProductClient(new OccProductAdapter(occ));
+
+export function ProductPage({ code }: { code: string }) {
+  const [product, setProduct] = useState<any>(null);
+
+  useEffect(() => {
+    productClient.getProduct(code).then(setProduct);
+  }, [code]);
+
+  if (!product) return <p>Loading…</p>;
+  return <h1>{product.name}</h1>;
 }
 ```
+
+:::danger Never put secrets in `VITE_*` variables
+Anything prefixed `VITE_` is bundled into your JavaScript output and visible to anyone. Never put `OAUTH_CLIENT_SECRET`, `AUTH_ENCRYPTION_KEY`, or any Azure credentials in Vite env vars.
+:::
 
 ---
 
-## Next.js App Router
+## Part B — Backend (Express)
 
-In Next.js, pass `NexuviaProvider` your server-resolved `initialUser` so there's no session flash:
+The backend is a thin Node.js server that proxies SAP OCC for cart, holds OAuth secrets, and handles the Azure auth flow.
 
-```tsx
-// src/app/[lang]/store-layout-client.tsx
-'use client';
+### Step 1 — Server config
 
-import { NexuviaProvider } from '@nexuvia/react';
-import { GtmScript } from '@nexuvia/analytics';
-import type { SessionUser } from '@nexuvia/auth-client';
-import type { StoreConfig } from '@nexuvia/core';
+```ts
+// nexuvia.app.ts  ← project root (imported by backend only)
+import { NexuviaApp } from '@nexuvia/app';
+import config from './nexuvia.config';
 
-interface Props {
-  storeKey:    string;
-  language:    string;
-  storeConfig: StoreConfig;
-  initialUser: SessionUser | null;
-  children:    React.ReactNode;
-}
-
-export function StoreLayoutClient({ storeKey, language, storeConfig, initialUser, children }: Props) {
-  return (
-    <>
-      <GtmScript containerId={process.env.NEXT_PUBLIC_GTM_ID ?? ''} />
-      <NexuviaProvider
-        storeKey={storeKey}
-        language={language}
-        storeConfig={storeConfig}
-        cartClientConfig={{ baseSite: storeConfig.baseSite, language }}
-        initialUser={initialUser}
-        gtmContainerId={process.env.NEXT_PUBLIC_GTM_ID ?? ''}
-      >
-        {children}
-      </NexuviaProvider>
-    </>
-  );
-}
+export const app = new NexuviaApp(config);
 ```
 
----
+```ts
+// nexuvia.config.ts — same file used by frontend types and backend logic
+import type { NexuviaConfig } from '@nexuvia/core';
 
-## Escape hatches — individual providers
+const config: NexuviaConfig = {
+  hybris: {
+    protocol:    process.env.HYBRIS_PROTOCOL || 'https',
+    host:        process.env.HYBRIS_HOST     || '',
+    version:     'v2',
+    occBasePath: '/occ',
+    cmsBasePath: '/customws',
+  },
+  stores: {
+    default: {
+      baseSite:           process.env.BASE_SITE || 'my-basesite',
+      domain:             'localhost',
+      supportedLanguages: ['en'],
+      defaultLanguage:    'en',
+      currency:           'USD',
+      country:            'US',
+      isEcommerce:        true,
+    },
+  },
+  cms: {
+    useMock:    process.env.USE_CMS_MOCK !== 'false',
+    pageLabels: { homepage: 'homepage', productDetail: 'productDetails', cart: 'cartPage', search: 'search' },
+  },
+  smartedit:   { allowedOrigins: [], previewVersion: 'v1' },
+  authServer:  {
+    clientId:      process.env.OAUTH_CLIENT_ID     || '',
+    clientSecret:  process.env.OAUTH_CLIENT_SECRET || '',
+    tokenEndpoint: '/authorizationserver/oauth/token',
+  },
+  authClient: {
+    session: {
+      encryptionKey: process.env.AUTH_ENCRYPTION_KEY || '',
+      secureCookies: process.env.NODE_ENV === 'production',
+    },
+  },
+  analytics: { gtmContainerId: '' },
+};
 
-If you need to override a specific provider (for example to pass a custom cart client with a payload extender), each internal provider is exported individually:
+export default config;
+```
 
-```tsx
+### Step 2 — Auth config (self-registers on import)
+
+```ts
+// server/config/auth.ts
+import { registerAuthConfig } from '@nexuvia/auth-client';
+import type { AzureStoreConfig } from '@nexuvia/auth-client';
+import config from '../../nexuvia.config';
+
+async function getAzureStoreConfig(storeKey: string): Promise<AzureStoreConfig> {
+  return {
+    authority:    process.env[`AZURE_AUTHORITY_${storeKey.toUpperCase()}`]    || '',
+    clientId:     process.env[`AZURE_CLIENT_ID_${storeKey.toUpperCase()}`]    || '',
+    clientSecret: process.env[`AZURE_CLIENT_SECRET_${storeKey.toUpperCase()}`] || '',
+    scope:        'openid profile offline_access',
+    redirectUri:  process.env.AZURE_REDIRECT_URI || 'http://localhost:3001/auth/callback',
+  };
+}
+
+registerAuthConfig({
+  session:             config.authClient.session,
+  storeConfigProvider: getAzureStoreConfig,
+});
+```
+
+### Step 3 — Auth routes
+
+```ts
+// server/routes/auth.ts
+import './config/auth';   // ← MUST be first — triggers self-registration
+import { Router } from 'express';
 import {
-  StoreProvider,
-  AuthProvider,
-  CartProvider,
-  AnalyticsProvider,
-} from '@nexuvia/react';
+  getRegisteredAuthConfig, getAzureConfig,
+  buildAuthUrl, buildTempCookieHeader,
+  exchangeCodeForToken, extractUserFromToken,
+  storeAccessToken, encryptSession,
+  buildSessionCookieHeader, buildClearCookieHeader, buildLogoutUrl,
+  getSession, clearAccessToken, readCookie,
+  NONCE_COOKIE_NAME, STORE_COOKIE_NAME,
+} from '@nexuvia/auth-client';
 
-const cartClientConfig = { baseSite: 'my-site', language: 'en' };
+const router = Router();
 
-export function App() {
-  return (
-    <StoreProvider storeKey="default" storeConfig={store} language="en">
-      <AuthProvider>
-        <CartProvider clientConfig={cartClientConfig}>
-          <AnalyticsProvider gtmContainerId="GTM-XXXXXXX">
-            <App />
-          </AnalyticsProvider>
-        </CartProvider>
-      </AuthProvider>
-    </StoreProvider>
-  );
-}
+// GET /api/auth/login?store=default
+router.get('/login', async (req, res) => {
+  const config      = getRegisteredAuthConfig();
+  const storeKey    = (req.query.store as string) ?? 'default';
+  const azureConfig = await getAzureConfig(storeKey);
+  const nonce       = crypto.randomUUID();
+  const state       = crypto.randomUUID();
+  const { url }     = buildAuthUrl(azureConfig, config, nonce, state);
+  const secure      = config.session.secureCookies ?? false;
+
+  res.setHeader('Set-Cookie', [
+    buildTempCookieHeader(NONCE_COOKIE_NAME, nonce, secure),
+    buildTempCookieHeader(STORE_COOKIE_NAME, storeKey, secure),
+  ]);
+  res.json({ redirectUrl: url });
+});
+
+// GET /auth/callback  (Azure redirect — NOT /api/auth/callback)
+router.get('/callback', async (req, res) => {
+  const config    = getRegisteredAuthConfig();
+  const code      = req.query.code as string;
+  const error     = req.query.error as string;
+
+  if (error || !code) {
+    return res.redirect(`${process.env.FRONTEND_URL}/?auth_error=${error ?? 'no_code'}`);
+  }
+
+  const cookie   = req.headers.cookie ?? '';
+  const storeKey = readCookie(cookie, STORE_COOKIE_NAME) ?? 'default';
+
+  try {
+    const azureConfig = await getAzureConfig(storeKey);
+    const token       = await exchangeCodeForToken(code, azureConfig, config);
+    const user        = extractUserFromToken(token.id_token);
+
+    if (token.access_token) {
+      storeAccessToken(user.id, token.access_token, Date.now() + token.expires_in * 1000);
+    }
+
+    const sessionCookie = buildSessionCookieHeader(
+      await encryptSession(user, config),
+      config,
+    );
+    const secure = config.session.secureCookies ?? false;
+
+    res.setHeader('Set-Cookie', [
+      sessionCookie,
+      buildClearCookieHeader(NONCE_COOKIE_NAME, secure),
+      buildClearCookieHeader(STORE_COOKIE_NAME, secure),
+    ]);
+    res.redirect(process.env.FRONTEND_URL ?? 'http://localhost:5173');
+  } catch (err) {
+    console.error('[nexuvia/auth] callback failed:', err);
+    res.redirect(`${process.env.FRONTEND_URL}/?auth_error=callback_failed`);
+  }
+});
+
+// GET /api/auth/session
+router.get('/session', (req, res) => {
+  const config = getRegisteredAuthConfig();
+  const user   = getSession(req.headers.cookie ?? null, config);
+  res.json(user ?? null);
+});
+
+// POST /api/auth/logout
+router.post('/logout', async (req, res) => {
+  const config    = getRegisteredAuthConfig();
+  const cookie    = req.headers.cookie ?? '';
+  const user      = getSession(cookie, config);
+  const storeKey  = readCookie(cookie, STORE_COOKIE_NAME) ?? 'default';
+
+  if (user?.id) clearAccessToken(user.id);
+
+  const azureConfig = await getAzureConfig(storeKey);
+  const logoutUrl   = buildLogoutUrl(azureConfig, config);
+  const secure      = config.session.secureCookies ?? false;
+
+  res.setHeader('Set-Cookie', [
+    buildClearCookieHeader(config.session.cookieName ?? '__nexuvia_session', secure),
+  ]);
+  res.json({ redirectUrl: logoutUrl });
+});
+
+export default router;
 ```
 
-Use escape hatches only when you have a specific reason to override the default wiring. For most apps `<NexuviaProvider>` is all you need.
+### Step 4 — Cart route
 
----
+```ts
+// server/routes/cart.ts
+import { Router } from 'express';
+import { app }    from '../../nexuvia.app';
 
-## Backend setup (needed for cart + auth)
+const router = Router();
 
-The backend for a Vite React app is a thin Express or Hono server. The route logic is identical to the [Next.js wiring docs](/wiring/overview) — adapted to your framework's syntax:
+router.get('/', async (req, res) => {
+  const { lang = 'en', cartId } = req.query as Record<string, string>;
+  const storeKey = (req.headers['x-store-key'] as string) ?? 'default';
+
+  try {
+    const ctx    = await app.forRequest(storeKey, lang);
+    const cart   = cartId ? await ctx.cart.server.getCart(cartId) : null;
+    res.json(cart);
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+router.post('/', async (req, res) => {
+  const { lang = 'en', cartId, productCode, quantity = 1 } = req.body;
+  const storeKey = (req.headers['x-store-key'] as string) ?? 'default';
+
+  try {
+    const ctx    = await app.forRequest(storeKey, lang);
+    const id     = cartId ?? await ctx.cart.server.createCart();
+    const result = await ctx.cart.server.addToCart(id, { productCode, quantity });
+    res.json({ cartId: id, result });
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+router.patch('/', async (req, res) => {
+  const { lang = 'en', cartId, entryNumber, quantity } = req.body;
+  const storeKey = (req.headers['x-store-key'] as string) ?? 'default';
+
+  try {
+    const ctx    = await app.forRequest(storeKey, lang);
+    const result = await ctx.cart.server.updateCartEntry(cartId, entryNumber, quantity);
+    res.json(result);
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+router.delete('/', async (req, res) => {
+  const { lang = 'en', cartId, entry } = req.query as Record<string, string>;
+  const storeKey = (req.headers['x-store-key'] as string) ?? 'default';
+
+  try {
+    const ctx = await app.forRequest(storeKey, lang);
+    await ctx.cart.server.removeFromCart(cartId, Number(entry));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+export default router;
+```
+
+### Step 5 — Express server entry
 
 ```ts
 // server/index.ts
-import express from 'express';
-import cors    from 'cors';
-import { createOccClient } from './config/server';
-import { OccCartAdapter }  from '@nexuvia/cart/server';
+import 'dotenv/config';
+import express    from 'express';
+import cors       from 'cors';
+import cookieParser from 'cookie-parser';
+import authRoutes  from './routes/auth';
+import cartRoutes  from './routes/cart';
 
-const app = express();
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+const app  = express();
+const PORT = process.env.PORT ?? 3001;
+
+app.use(cors({
+  origin:      process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  credentials: true,   // required for cookies
+}));
 app.use(express.json());
+app.use(cookieParser());
 
-app.post('/api/cart', async (req, res) => {
-  const { cartId, baseSite, language, productCode, quantity = 1 } = req.body;
-  const client  = createOccClient(baseSite, language);
-  const adapter = new OccCartAdapter(client);
-  // addToCart(cartId ?? null, { productCode, quantity })
+// Auth — note: /auth/callback is at root level, not under /api
+app.get('/auth/callback', authRoutes);   // Azure redirect target
+app.use('/api/auth', authRoutes);
+app.use('/api/cart', cartRoutes);
+
+app.listen(PORT, () => {
+  console.log(`Nexuvia backend on http://localhost:${PORT}`);
 });
-
-app.listen(3001, () => console.log('Backend on :3001'));
 ```
 
-:::danger Never put secrets in VITE_*
-Anything starting with `VITE_` is bundled into your JavaScript. Never put `OAUTH_CLIENT_SECRET` or `AUTH_ENCRYPTION_KEY` here.
-:::
+---
+
+## Env files
+
+```bash
+# .env  (Vite — bundled into browser JS, safe for public values only)
+VITE_API_BASE=http://localhost:3001
+VITE_BASE_SITE=my-basesite
+VITE_GTM_ID=
+```
+
+```bash
+# .env.server  (Express — never expose to browser)
+HYBRIS_HOST=occ-dev.example.com
+HYBRIS_PROTOCOL=https
+OAUTH_CLIENT_ID=mobile_android
+OAUTH_CLIENT_SECRET=your_secret_here
+AUTH_ENCRYPTION_KEY=a-random-32-character-string
+AZURE_REDIRECT_URI=http://localhost:3001/auth/callback
+FRONTEND_URL=http://localhost:5173
+USE_CMS_MOCK=true
+```
+
+---
+
+## Development workflow
+
+Run both processes in parallel:
+
+```bash
+# Terminal 1 — Vite dev server
+npm run dev
+
+# Terminal 2 — Express backend
+npx ts-node server/index.ts
+# or: npx tsx watch server/index.ts
+```
+
+Or with `concurrently`:
+
+```bash
+npm install -D concurrently
+# package.json
+"dev": "concurrently \"vite\" \"tsx watch server/index.ts\""
+```
 
 ---
 
 ## Checklist
 
-- [ ] `pnpm add @nexuvia/react` installed
-- [ ] `<NexuviaProvider>` wraps the entire app in `App.tsx` (or Next.js layout client)
-- [ ] All hooks imported from `@nexuvia/react` — not from `@/providers/`
-- [ ] No `OAUTH_CLIENT_SECRET` or encryption key in any `VITE_*` var
-- [ ] Backend running for cart + auth (or stick to mock-only for demos)
-- [ ] `initialUser` passed from server in Next.js to prevent session flash
-- [ ] CORS configured on backend for the React dev server origin
+### Frontend
+
+- [ ] `@nexuvia/react` installed
+- [ ] `<NexuviaProvider>` wraps entire app in `App.tsx`
+- [ ] All hooks imported from `@nexuvia/react`
+- [ ] CMS components registered in `plugins/cms-defaults.ts` before mount
+- [ ] No secrets in any `VITE_*` variable
+
+### Backend
+
+- [ ] `server/config/auth.ts` imported at top of every auth handler
+- [ ] CORS configured with `credentials: true` and matching `origin`
+- [ ] Auth callback at `/auth/callback` — NOT `/api/auth/callback`
+- [ ] Cart handler uses `OccCartAdapter` (server), never `ProxyCartAdapter`
+- [ ] `OAUTH_CLIENT_SECRET` and `AUTH_ENCRYPTION_KEY` in `.env.server` only

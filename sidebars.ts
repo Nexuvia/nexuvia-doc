@@ -103,6 +103,15 @@ const sidebars: SidebarsConfig = {
         'packages/browser',
       ],
     },
+    {
+      type: 'category',
+      label: 'Tooling',
+      collapsed: false,
+      items: [
+        'packages/di',
+        'packages/codemod',
+      ],
+    },
   ],
 };
 
