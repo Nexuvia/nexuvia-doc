@@ -42,49 +42,51 @@ For every incoming request:
 <TabItem value="nextjs" label="Next.js">
 
 ```ts
-// src/proxy.ts        ← Next.js 16+ (was middleware.ts in 14/15)
-import { NextRequest, NextResponse }                from 'next/server';
-import { getStoreByDomain, getDefaultStore, stores } from '@/config/stores';
+// proxy.ts  ← Next.js 16+ convention (was middleware.ts in earlier versions)
+import { NextRequest, NextResponse } from 'next/server';
+import nexuviaConfig from './nexuvia.config';
+
+// Build domain → storeKey map once at module load — not per request.
+const DOMAIN_MAP: Record<string, string> = {};
+for (const [key, store] of Object.entries(nexuviaConfig.stores)) {
+  DOMAIN_MAP[store.domain] = key;
+}
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Skip internal paths
-  if (pathname.startsWith('/api/')   ||
-      pathname.startsWith('/auth/')  ||      // ← MUST skip — Azure callback lives here
-      pathname.startsWith('/_next/') ||
-      pathname.includes('.')) {
-    return NextResponse.next();
+  // Skip internal paths — /auth/ is critical: Azure callback must not be language-prefixed.
+  if (
+    pathname.startsWith('/api/')   ||
+    pathname.startsWith('/auth/')  ||
+    pathname.startsWith('/_next/') ||
+    pathname.includes('.')
+  ) return NextResponse.next();
+
+  const hostname = request.headers.get('host')?.replace(/:\d+$/, '') ?? '';
+  const storeKey = DOMAIN_MAP[hostname] ?? Object.keys(nexuviaConfig.stores)[0];
+  const store    = nexuviaConfig.stores[storeKey];
+  const lang     = pathname.split('/').filter(Boolean)[0];
+
+  if (lang && store.supportedLanguages.includes(lang)) {
+    const res = NextResponse.next();
+    res.headers.set('x-store-key', storeKey);
+    return res;
   }
 
-  // 2. Resolve store from Host header
-  // Port is stripped so mystore.local:4001 matches domain 'mystore.local'
-  const hostname    = request.headers.get('host')?.replace(/:\d+$/, '') || '';
-  const storeMatch  = getStoreByDomain(hostname);
-  const storeConfig = storeMatch?.config || getDefaultStore();
-  const storeKey    = storeMatch?.key    || Object.keys(stores)[0];
-
-  // 3. Validate language prefix
-  const segments = pathname.split('/').filter(Boolean);
-  const lang     = segments[0];
-
-  if (lang && storeConfig.supportedLanguages.includes(lang)) {
-    const response = NextResponse.next();
-    response.headers.set('x-store-key',      storeKey);
-    response.headers.set('x-store-basesite', storeConfig.baseSite);
-    response.headers.set('x-store-lang',     lang);
-    return response;
-  }
-
-  // 4. Redirect to store default language — preserves the rest of the path
-  const newLang = storeConfig.defaultLanguage;
-  return NextResponse.redirect(new URL(`/${newLang}${pathname}`, request.url));
+  return NextResponse.redirect(
+    new URL(`/${store.defaultLanguage}${pathname}`, request.url),
+  );
 }
 
 export const config = {
   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };
 ```
+
+:::tip Import nexuvia.config directly in proxy.ts
+The proxy runs at the Edge/middleware layer — it cannot call async functions or use `@/config/stores`. Import `nexuvia.config` directly and build the domain map at module load time. This is faster and avoids any config-layer dependency issues.
+:::
 
 </TabItem>
 <TabItem value="express" label="Node.js (Express)">

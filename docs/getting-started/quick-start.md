@@ -68,11 +68,22 @@ These packages are optional — you can always wire providers manually (see the 
 
 ## 3. Initialize your project
 
-Run the interactive CLI wizard to configure Nexuvia for your project:
+Run the interactive CLI wizard to configure Nexuvia for your project.
+
+The CLI is part of `@nexuvia/cli` (scoped to GitHub Package Registry). Because `npx` resolves unscoped names from the public npm registry, you must either use the full package name or install the CLI first:
 
 ```bash
+# Option A — use the full scoped name directly
+npx @nexuvia/cli init
+
+# Option B — install the CLI once, then use the short alias
+npm install --save-dev @nexuvia/cli
 npx nexuvia init
 ```
+
+:::tip
+If you installed the umbrella package `@nexuvia/nexuvia`, `@nexuvia/cli` is already a dependency and `npx nexuvia init` works without installing it separately.
+:::
 
 The wizard will:
 

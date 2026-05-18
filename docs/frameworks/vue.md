@@ -3,8 +3,7 @@ title: Vue 3
 sidebar_position: 3
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+<!--
 
 ## Vue 3 — Complete Wiring Guide
 
@@ -866,3 +865,4 @@ export default defineEventHandler(async (event) => {
 - [ ] Secrets in `runtimeConfig` (not `runtimeConfig.public`) — never in `NUXT_PUBLIC_*`
 - [ ] `NexuviaApp.getInstance(config)` called once at module level (singleton)
 - [ ] Cart routes use `ctx.cart.server` — never `ProxyCartAdapter` server-side
+-->

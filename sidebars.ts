@@ -44,9 +44,9 @@ const sidebars: SidebarsConfig = {
       items: [
         'frameworks/nextjs',
         'frameworks/react',
-        'frameworks/vue',
-        'frameworks/angular',
-        'frameworks/browser',
+        // 'frameworks/vue',
+        // 'frameworks/angular',
+        // 'frameworks/browser',
       ],
     },
   ],

@@ -35,10 +35,15 @@ your-project/
 
 | Framework | Location |
 |-----------|----------|
-| Next.js | `src/config/` |
-| Node.js (Express/Hono) backend | `src/config/` (in your backend project) |
+| Next.js (no `src/`) | `config/` at project root |
+| Next.js (with `src/`) | `src/config/` |
+| Node.js (Express/Hono) backend | `config/` in your backend project |
 | Nuxt 3 | `~/config/` (Nuxt auto-imports from here) |
 | Angular | `src/app/config/` |
+
+:::tip No `src/` directory?
+If your Next.js project has no `src/` folder (the default for `create-next-app` since Next.js 15+), put `config/` at the root alongside `app/`. Set `"@/*": ["./*"]` in `tsconfig.json` so `@/config/...` resolves to `config/...`.
+:::
 
 ---
 
@@ -48,25 +53,23 @@ URL helpers derived from `config.hybris`. Other config files import from this on
 
 ```ts
 // config/hybris.ts
-import config from '../../nexuvia.config';
-
-const { hybris } = config;
+import config from '../nexuvia.config';   // adjust depth to match your project layout
 
 export function getHybrisBaseUrl(): string {
-  const { protocol, host, port } = hybris;
-  return `${protocol}://${host}${port ? `:${port}` : ''}`;
+  const { protocol, host, port } = config.hybris;
+  return port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
 }
 
-export function getOccConfig() {
-  return {
-    baseUrl:  getHybrisBaseUrl(),
-    basePath: hybris.occBasePath,
-    version:  hybris.version,
-  };
+export function getOccBasePath(): string {
+  return config.hybris.occBasePath;
 }
 
-export function getOccBaseUrl(baseSite: string): string {
-  return `${getHybrisBaseUrl()}${hybris.occBasePath}/${hybris.version}/${baseSite}`;
+export function getCmsBasePath(): string {
+  return config.hybris.cmsBasePath;
+}
+
+export function getApiVersion(): string {
+  return config.hybris.version;
 }
 ```
 
@@ -78,27 +81,22 @@ Store helpers — one place to resolve a store by key or domain.
 
 ```ts
 // config/stores.ts
-import config from '../../nexuvia.config';
-
-export type StoreConfig = (typeof config.stores)[string];
+import type { StoreConfig } from '@nexuvia/core';
+import config from '../nexuvia.config';
 
 export const stores = config.stores;
 
 export function getStoreConfig(storeKey: string): StoreConfig | undefined {
-  return config.stores[storeKey.toLowerCase()];
+  return config.stores[storeKey];
 }
 
 export function getDefaultStore(): StoreConfig {
-  // Pick the first store as the fallback
-  const firstKey = Object.keys(config.stores)[0];
-  return config.stores[firstKey];
+  return config.stores[Object.keys(config.stores)[0]];
 }
 
 export function getStoreByDomain(hostname: string): { key: string; config: StoreConfig } | undefined {
-  for (const [key, storeConfig] of Object.entries(config.stores)) {
-    if (storeConfig.domain === hostname) {
-      return { key, config: storeConfig };
-    }
+  for (const [key, store] of Object.entries(config.stores)) {
+    if (store.domain === hostname) return { key, config: store };
   }
   return undefined;
 }
@@ -139,184 +137,59 @@ Server-side factory that returns an OCC client with the machine token already in
 
 The function body is identical — only how you read cookies/headers differs:
 
-<Tabs groupId="framework">
-<TabItem value="nextjs" label="Next.js">
-
 ```ts
-// src/config/server.ts
-import { cookies }                                  from 'next/headers';
+// config/server.ts  (same in all frameworks — adjust import depth to match your layout)
 import { OccClient }                                from '@nexuvia/occ';
-import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
-import config                                       from '../../nexuvia.config';
-import { getOccConfig, getHybrisBaseUrl }           from './hybris';
+import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms';
+import type { OccCmsPageResponse }                  from '@nexuvia/cms';
+import { readFileSync }                             from 'fs';
+import { join }                                     from 'path';
+import { getHybrisBaseUrl, getOccBasePath, getCmsBasePath, getApiVersion } from './hybris';
 import { getStoreConfig, getDefaultStore }          from './stores';
+import config                                       from '../nexuvia.config';
 
-export async function createServerOccClient(storeKey?: string, lang?: string) {
-  const cookieStore  = await cookies();
-  const resolvedStore = storeKey || cookieStore.get('store')?.value;
-  const storeConfig   = getStoreConfig(resolvedStore || '') || getDefaultStore();
-  const resolvedLang  = lang || storeConfig.defaultLanguage;
-
-  const client = new OccClient(getOccConfig(), storeConfig.baseSite, resolvedLang);
-
-  const token = await getStaticToken({
-    baseUrl:       getHybrisBaseUrl(),
-    clientId:      config.authServer.clientId,
-    clientSecret:  config.authServer.clientSecret,
-    tokenEndpoint: config.authServer.tokenEndpoint,
-  });
-  if (token) client.setAccessToken(token);
-
-  return client;
+export function createServerOccClient(storeKey: string, language: string): OccClient {
+  const store = getStoreConfig(storeKey) ?? getDefaultStore();
+  return new OccClient(
+    { baseUrl: getHybrisBaseUrl(), basePath: getOccBasePath(), version: getApiVersion() },
+    store.baseSite,
+    language,
+  );
 }
 
-async function loadMockPage(pageLabelOrId: string) {
+// Reads mock JSON from the project's /mock directory by page label.
+// Uses readFileSync (not dynamic import) so it works in all runtimes without JSON import assertions.
+async function mockPageLoader(pageLabelOrId: string): Promise<OccCmsPageResponse | null> {
   try {
-    const mod = await import(`../mock/${pageLabelOrId}.json`, { assert: { type: 'json' } });
-    return mod.default ?? null;
-  } catch { return null; }
+    const raw = readFileSync(join(process.cwd(), 'mock', `${pageLabelOrId}.json`), 'utf-8');
+    return JSON.parse(raw) as OccCmsPageResponse;
+  } catch {
+    return null;
+  }
 }
 
 export function createCmsClient(occClient: OccClient): CmsClient {
-  if (config.cms.useMock) return new CmsClient(new MockCmsAdapter(loadMockPage));
-  return new CmsClient(new OccCmsAdapter(occClient, config.hybris.cmsBasePath));
+  const ttl  = config.cache?.cmsTtl;
+  const opts = ttl !== undefined ? { ttl } : undefined;
+
+  if (config.cms.useMock) {
+    return new CmsClient(new MockCmsAdapter(mockPageLoader), opts);
+  }
+  return new CmsClient(new OccCmsAdapter(occClient, getCmsBasePath()), opts);
 }
 ```
 
-</TabItem>
-<TabItem value="node" label="Node.js (Express/Hono)">
+:::tip Mock data location
+Put your mock JSON files in `mock/` at the project root (or `src/mock/` if you have a `src/` directory). Filenames must match page labels exactly: `mock/homepage.json`, `mock/productDetails.json`, etc.
 
-```ts
-// server/config/server.ts
-import { OccClient }                                from '@nexuvia/occ';
-import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
-import config                                       from '../../nexuvia.config';
-import { getOccConfig, getHybrisBaseUrl }           from './hybris';
-import { getStoreConfig, getDefaultStore }          from './stores';
-
-// Pass storeKey + lang as plain arguments — read them from the request in your route handler.
-export async function createServerOccClient(storeKey?: string, lang?: string) {
-  const storeConfig  = getStoreConfig(storeKey || '') || getDefaultStore();
-  const resolvedLang = lang || storeConfig.defaultLanguage;
-
-  const client = new OccClient(getOccConfig(), storeConfig.baseSite, resolvedLang);
-
-  const token = await getStaticToken({
-    baseUrl:       getHybrisBaseUrl(),
-    clientId:      config.authServer.clientId,
-    clientSecret:  config.authServer.clientSecret,
-    tokenEndpoint: config.authServer.tokenEndpoint,
-  });
-  if (token) client.setAccessToken(token);
-
-  return client;
-}
-
-async function loadMockPage(pageLabelOrId: string) {
-  try {
-    const mod = await import(`../mock/${pageLabelOrId}.json`, { assert: { type: 'json' } });
-    return mod.default ?? null;
-  } catch { return null; }
-}
-
-export function createCmsClient(occClient: OccClient): CmsClient {
-  if (config.cms.useMock) return new CmsClient(new MockCmsAdapter(loadMockPage));
-  return new CmsClient(new OccCmsAdapter(occClient, config.hybris.cmsBasePath));
-}
+The nexuvia package ships sample mock data — copy it to get started:
+```bash
+cp node_modules/@nexuvia/cms/dist/mock/*.json mock/
 ```
-
-</TabItem>
-<TabItem value="nuxt" label="Nuxt 3">
-
-```ts
-// server/config/server.ts (or ~/server/utils/nexuvia.ts)
-import { OccClient }                                from '@nexuvia/occ';
-import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
-import config                                       from '../../nexuvia.config';
-import { getOccConfig, getHybrisBaseUrl }           from './hybris';
-import { getStoreConfig, getDefaultStore }          from './stores';
-
-// Read cookies via Nuxt's H3 utilities inside your route handler, then pass storeKey + lang.
-export async function createServerOccClient(storeKey?: string, lang?: string) {
-  const storeConfig  = getStoreConfig(storeKey || '') || getDefaultStore();
-  const resolvedLang = lang || storeConfig.defaultLanguage;
-
-  const client = new OccClient(getOccConfig(), storeConfig.baseSite, resolvedLang);
-
-  const token = await getStaticToken({
-    baseUrl:       getHybrisBaseUrl(),
-    clientId:      config.authServer.clientId,
-    clientSecret:  config.authServer.clientSecret,
-    tokenEndpoint: config.authServer.tokenEndpoint,
-  });
-  if (token) client.setAccessToken(token);
-
-  return client;
-}
-
-async function loadMockPage(pageLabelOrId: string) {
-  try {
-    const mod = await import(`../mock/${pageLabelOrId}.json`, { assert: { type: 'json' } });
-    return mod.default ?? null;
-  } catch { return null; }
-}
-
-export function createCmsClient(occClient: OccClient): CmsClient {
-  if (config.cms.useMock) return new CmsClient(new MockCmsAdapter(loadMockPage));
-  return new CmsClient(new OccCmsAdapter(occClient, config.hybris.cmsBasePath));
-}
-```
-
-</TabItem>
-<TabItem value="angular" label="Angular Universal">
-
-```ts
-// src/app/config/server.ts (used by server.ts Express handlers in Angular Universal)
-import { OccClient }                                from '@nexuvia/occ';
-import { getStaticToken }                           from '@nexuvia/auth-server';
-import { CmsClient, OccCmsAdapter, MockCmsAdapter } from '@nexuvia/cms/server';
-import config                                       from '../../../nexuvia.config';
-import { getOccConfig, getHybrisBaseUrl }           from './hybris';
-import { getStoreConfig, getDefaultStore }          from './stores';
-
-export async function createServerOccClient(storeKey?: string, lang?: string) {
-  const storeConfig  = getStoreConfig(storeKey || '') || getDefaultStore();
-  const resolvedLang = lang || storeConfig.defaultLanguage;
-
-  const client = new OccClient(getOccConfig(), storeConfig.baseSite, resolvedLang);
-
-  const token = await getStaticToken({
-    baseUrl:       getHybrisBaseUrl(),
-    clientId:      config.authServer.clientId,
-    clientSecret:  config.authServer.clientSecret,
-    tokenEndpoint: config.authServer.tokenEndpoint,
-  });
-  if (token) client.setAccessToken(token);
-
-  return client;
-}
-
-async function loadMockPage(pageLabelOrId: string) {
-  try {
-    const mod = await import(`../mock/${pageLabelOrId}.json`, { assert: { type: 'json' } });
-    return mod.default ?? null;
-  } catch { return null; }
-}
-
-export function createCmsClient(occClient: OccClient): CmsClient {
-  if (config.cms.useMock) return new CmsClient(new MockCmsAdapter(loadMockPage));
-  return new CmsClient(new OccCmsAdapter(occClient, config.hybris.cmsBasePath));
-}
-```
-
-</TabItem>
-</Tabs>
+:::
 
 :::warning One client per request
-`createServerOccClient` returns a **new client per call**. Never cache or reuse the result — the access token is mutable and would leak between users.
+`createServerOccClient` returns a **new client per call**. Never cache or reuse the result.
 :::
 
 ---
@@ -327,11 +200,17 @@ Lightweight factory for your route handlers — public OCC endpoints (cart, prod
 
 ```ts
 // config/api-helpers.ts
-import { OccClient }    from '@nexuvia/occ';
-import { getOccConfig } from './hybris';
+import { OccClient }                                           from '@nexuvia/occ';
+import { getHybrisBaseUrl, getOccBasePath, getApiVersion }    from './hybris';
+import { getStoreConfig, getDefaultStore }                     from './stores';
 
-export function createRouteOccClient(baseSite: string, lang: string = 'en'): OccClient {
-  return new OccClient(getOccConfig(), baseSite, lang);
+export function createRouteOccClient(storeKey: string, language: string): OccClient {
+  const store = getStoreConfig(storeKey) ?? getDefaultStore();
+  return new OccClient(
+    { baseUrl: getHybrisBaseUrl(), basePath: getOccBasePath(), version: getApiVersion() },
+    store.baseSite,
+    language,
+  );
 }
 ```
 
@@ -339,75 +218,56 @@ export function createRouteOccClient(baseSite: string, lang: string = 'en'): Occ
 
 ## File 5 — `auth.ts` — self-registers on import (identical in every framework)
 
-This file calls `registerAuthConfig()` at module load time. **Every auth route handler must `import` this file** — that import side-effect performs the registration.
+This file calls `registerAuthConfig()` at module load time. **Every auth route handler must `import` this file first** — that import side-effect performs the registration.
+
+The `storeConfigProvider` function belongs in **`nexuvia.config.ts`** — not here. `NexuviaApp` reads it at startup for validation, and `config/auth.ts` re-registers the same config so route handlers (which run in isolated module contexts) also have it.
 
 ```ts
-// config/auth.ts
-import { registerAuthConfig }   from '@nexuvia/auth-client';
-import { getStaticToken }       from '@nexuvia/auth-server';
+// nexuvia.config.ts — storeConfigProvider goes here, not in config/auth.ts
 import type { AzureStoreConfig } from '@nexuvia/auth-client';
-import config                   from '../../nexuvia.config';
-import { getHybrisBaseUrl }     from './hybris';
 
-const { hybris, authClient, authServer } = config;
+authClient: {
+  session: {
+    encryptionKey:   process.env.AUTH_ENCRYPTION_KEY    || '',
+    secureCookies:   process.env.NODE_ENV === 'production',
+    cookieName:      'auth_session',
+    nonceCookieName: 'auth_nonce',
+    storeCookieName: 'auth_store',
+  },
+  storeConfigProvider: async (storeKey: string): Promise<AzureStoreConfig> => {
+    return {
+      authority:    process.env[`AZURE_AUTHORITY_${storeKey.toUpperCase()}`]    || '',
+      clientId:     process.env[`AZURE_CLIENT_ID_${storeKey.toUpperCase()}`]    || '',
+      clientSecret: process.env[`AZURE_CLIENT_SECRET_${storeKey.toUpperCase()}`]|| '',
+      scope:        process.env[`AZURE_SCOPE_${storeKey.toUpperCase()}`]        || 'openid profile offline_access',
+      redirectUri:  process.env[`AZURE_REDIRECT_URI_${storeKey.toUpperCase()}`] || 'http://localhost:3000/auth/callback',
+    };
+  },
+},
+```
 
-// Fetches a config key from your backend (e.g. `azure.client.id.shop`)
-async function fetchHybrisConfigKey(key: string): Promise<string> {
-  const url = `${getHybrisBaseUrl()}${hybris.cmsBasePath}/${hybris.version}/configuration?key=${encodeURIComponent(key)}`;
-  const token = await getStaticToken({
-    baseUrl: getHybrisBaseUrl(),
-    clientId: authServer.clientId,
-    clientSecret: authServer.clientSecret,
-    tokenEndpoint: authServer.tokenEndpoint,
-  });
+```ts
+// config/auth.ts — just one line
+import { registerAuthConfig } from '@nexuvia/auth-client';
+import config from '../nexuvia.config';
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res  = await fetch(url, { headers, cache: 'no-store' });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Hybris config key "${key}" failed: ${res.status}`);
-  try {
-    const parsed = JSON.parse(text);
-    return typeof parsed === 'string' ? parsed : String(parsed);
-  } catch { return text.trim(); }
-}
-
-// Per-store Azure tenant config — called by auth-client during login
-async function getAzureStoreConfig(storeKey: string): Promise<AzureStoreConfig> {
-  const storeConfig = config.stores[storeKey.toLowerCase()];
-  const baseSite    = storeConfig?.baseSite ?? Object.values(config.stores)[0].baseSite;
-
-  const [authority, clientId, clientSecret] = await Promise.all([
-    fetchHybrisConfigKey(`azure.authorization.authority.${baseSite}`),
-    fetchHybrisConfigKey(`azure.client.id.${baseSite}`),
-    fetchHybrisConfigKey(`azure.secret.${baseSite}`),
-  ]);
-
-  return {
-    authority,
-    clientId,
-    clientSecret,
-    scope:       `openid profile offline_access ${clientId}`,
-    redirectUri: process.env[`AZURE_REDIRECT_URI_${storeKey.toUpperCase()}`] || '',
-  };
-}
-
-// Self-execute on import — every route handler that imports this file triggers it
-registerAuthConfig({
-  session:             authClient.session,
-  storeConfigProvider: getAzureStoreConfig,
-});
+// Self-registers on import. NexuviaApp registers at startup too, but route handlers
+// run in isolated module contexts — this ensures the config is present in every handler.
+registerAuthConfig(config.authClient!);
 ```
 
 :::danger Self-registration is critical
-Every auth route handler **must** start with this import line:
+Every auth route handler **must** have this as its first import:
 
 ```ts
-import '../config/auth';   // first line, no other imports above it
+import '@/config/auth';   // first line — no imports above it
 ```
 
-Without it, calling `getRegisteredAuthConfig()` throws `ConfigError: no config registered`.
+Without it, `getRegisteredAuthConfig()` throws `ConfigError: AUTH_CONFIG_MISSING`.
+:::
+
+:::danger storeConfigProvider is required
+`NexuviaApp` validates at startup that `storeConfigProvider` is a function. If it is missing or commented out, the server will throw `ConfigError: CONFIG_INVALID` on boot — before any request is served.
 :::
 
 ---
@@ -417,14 +277,14 @@ Without it, calling `getRegisteredAuthConfig()` throws `ConfigError: no config r
 ```ts
 // config/smartedit.ts
 import type { SmartEditServiceConfig } from '@nexuvia/smartedit';
-import config                          from '../../nexuvia.config';
+import config                          from '../nexuvia.config';
 import { getHybrisBaseUrl }            from './hybris';
 
-export function createSmartEditService(): SmartEditServiceConfig {
+export function createSmartEditConfig(): SmartEditServiceConfig {
   return {
     hybrisBaseUrl:  getHybrisBaseUrl(),
-    allowedOrigins: config.smartedit.allowedOrigins,
-    version:        config.smartedit.previewVersion,
+    version:        config.smartedit?.previewVersion ?? 'v1',
+    allowedOrigins: config.smartedit?.allowedOrigins ?? [],
   };
 }
 ```

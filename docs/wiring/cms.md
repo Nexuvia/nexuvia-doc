@@ -67,8 +67,8 @@ The registry is a plain `Map`. Register every `typeCode` to your UI component **
 <TabItem value="react" label="React (Next.js / Vite / CRA)">
 
 ```ts
-// src/cms-defaults.ts
-import { componentRegistry } from '@nexuvia/cms/client';
+// app/_cms-defaults.ts
+import { componentRegistry } from '@nexuvia/cms';
 import { CmsHeader }   from '@/components/cms/CmsHeader';
 import { CmsFooter }   from '@/components/cms/CmsFooter';
 import { CmsBanners }  from '@/components/cms/CmsBanners';
@@ -84,8 +84,8 @@ export function registerDefaultCmsComponents(): void {
 Call it once at the **top of your client layout module** (not inside a component):
 
 ```tsx
-// src/app/layout-client.tsx (or App.tsx)
-import { registerDefaultCmsComponents } from '@/cms-defaults';
+// app/[lang]/store-layout-client.tsx (or App.tsx)
+import { registerDefaultCmsComponents } from '@/app/_cms-defaults';
 registerDefaultCmsComponents();   // runs ONCE on module load
 
 export function ClientLayout({ children }) { return <>{children}</>; }
@@ -96,7 +96,7 @@ export function ClientLayout({ children }) { return <>{children}</>; }
 
 ```ts
 // plugins/cms-defaults.client.ts (Nuxt) or src/cms-defaults.ts (Vite)
-import { componentRegistry } from '@nexuvia/cms/client';
+import { componentRegistry } from '@nexuvia/cms';
 import CmsHeader   from '@/components/cms/CmsHeader.vue';
 import CmsFooter   from '@/components/cms/CmsFooter.vue';
 import CmsBanners  from '@/components/cms/CmsBanners.vue';
@@ -152,16 +152,18 @@ This happens server-side. The page is fetched **once** and passed into your UI t
 <TabItem value="nextjs" label="Next.js (Server Component)">
 
 ```tsx
-// src/app/[lang]/page.tsx
+// app/[lang]/page.tsx
 import { headers } from 'next/headers';
 import { createServerOccClient, createCmsClient } from '@/config/server';
-import HomePageClient from './page-client';
+import { HomePageClient } from './page-client';
 
-export default async function HomePage({ params }) {
+export default async function HomePage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang }  = await params;
-  const storeKey  = (await headers()).get('x-store-key') ?? '';
-  const occClient = await createServerOccClient(storeKey, lang);
-  const page      = await createCmsClient(occClient).getContentPage('homepage');
+  const hdrs      = await headers();
+  const storeKey  = hdrs.get('x-store-key') ?? 'ae';
+  const occ       = createServerOccClient(storeKey, lang);   // synchronous
+  const cms       = createCmsClient(occ);
+  const page      = await cms.getContentPage('homepage').catch(() => null);
 
   return <HomePageClient page={page} />;
 }
@@ -266,47 +268,31 @@ export class CmsService {
 <TabItem value="react" label="React">
 
 ```tsx
-// src/providers/cms-provider.tsx
+// app/[lang]/page-client.tsx
 'use client';
-import { createContext, useContext, type ReactNode } from 'react';
-import type { CMSPage } from '@nexuvia/cms';
+import type { ComponentType } from 'react';
+import { CmsPageProvider, useCmsPage } from '@nexuvia/react';
+import { componentRegistry }           from '@nexuvia/cms';
+import type { CMSPage, CMSComponent }  from '@nexuvia/cms';
 
-const Ctx = createContext<CMSPage | null>(null);
-
-// Pass page directly to context — no state/effect needed.
-// page is a Server Component prop (stable per render), so the state layer is unnecessary
-// and calling setState synchronously inside useEffect triggers a React cascading-setState warning.
-export function CmsPageProvider({ page, children }: { page: CMSPage | null; children: ReactNode }) {
-  return <Ctx.Provider value={page}>{children}</Ctx.Provider>;
-}
-
-export const useCmsPage = () => useContext(Ctx);
-```
-
-```tsx
-// src/components/cms/CmsSlotRenderer.tsx
-'use client';
-import { componentRegistry } from '@nexuvia/cms/client';
-import { useCmsPage }        from '@/providers/cms-provider';
-
-export function CmsSlotRenderer({ position }: { position: string }) {
+// CmsSlotRenderer is not exported by any nexuvia package — build it locally.
+function CmsSlotRenderer({ position }: { position: string }) {
   const page = useCmsPage();
   const slot = page?.contentSlots.find(s => s.position === position);
   if (!slot) return null;
-  return <>{slot.components.map(c => {
-    const C = componentRegistry.resolve(c.typeCode) as React.ComponentType<{ component: typeof c }> | null;
-    return C ? <C key={c.uid} component={c} /> : null;
-  })}</>;
+  return (
+    <>
+      {slot.components.map(c => {
+        const C = componentRegistry.resolve(c.typeCode) as
+          ComponentType<{ component: CMSComponent }> | null;
+        return C ? <C key={c.uid} component={c} /> : null;
+      })}
+    </>
+  );
 }
-```
 
-```tsx
-// Use in page
-'use client';
-import { CmsPageProvider } from '@/providers/cms-provider';
-import { CmsSlotRenderer } from '@/components/cms/CmsSlotRenderer';
-
-export default function HomePageClient({ page }) {
+export function HomePageClient({ page }: { page: CMSPage | null }) {
+  if (!page) return <main><p>Page not found.</p></main>;
   return (
     <CmsPageProvider page={page}>
       <CmsSlotRenderer position="HEADER" />
@@ -337,7 +323,7 @@ provide('cms-page', toRef(props, 'page'));
 import { inject, computed } from 'vue';
 import type { Ref } from 'vue';
 import type { CMSPage } from '@nexuvia/cms';
-import { componentRegistry } from '@nexuvia/cms/client';
+import { componentRegistry } from '@nexuvia/cms';
 
 const props = defineProps<{ position: string }>();
 const page = inject<Ref<CMSPage | null>>('cms-page');
@@ -362,7 +348,7 @@ const resolve = (typeCode: string) => componentRegistry.resolve(typeCode);
 // src/app/components/cms/cms-slot-renderer.component.ts
 import { Component, Input, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { componentRegistry } from '@nexuvia/cms/client';
+import { componentRegistry } from '@nexuvia/cms';
 import type { CMSPage } from '@nexuvia/cms';
 
 @Component({
@@ -398,16 +384,42 @@ export class CmsSlotComponent implements OnChanges {
 
 ## Mock pages for local dev
 
-When `cms.useMock: true`, the `MockCmsAdapter` reads from `src/mock/{pageLabel}.json`. Filename must match the page label exactly.
+When `cms.useMock: true`, `MockCmsAdapter` reads from the `mock/` directory at the project root. Filename must match the page label exactly.
 
 ```text
-src/mock/
+mock/
   homepage.json
   productDetails.json
   cartPage.json
 ```
 
-The JSON must be a valid SAP OCC CMS page response. The adapter handles both wrapped and flat shapes.
+`MockCmsAdapter` requires a loader function — pass it in `config/server.ts` using `readFileSync` (works across all runtimes without JSON import assertions):
+
+```ts
+// config/server.ts
+import { readFileSync } from 'fs';
+import { join }        from 'path';
+import type { OccCmsPageResponse } from '@nexuvia/cms';
+
+async function mockPageLoader(pageLabelOrId: string): Promise<OccCmsPageResponse | null> {
+  try {
+    const raw = readFileSync(join(process.cwd(), 'mock', `${pageLabelOrId}.json`), 'utf-8');
+    return JSON.parse(raw) as OccCmsPageResponse;
+  } catch {
+    return null;
+  }
+}
+// Pass it when constructing MockCmsAdapter:
+// new CmsClient(new MockCmsAdapter(mockPageLoader), opts)
+```
+
+The nexuvia package ships sample mock data — copy it to get started:
+
+```bash
+cp node_modules/@nexuvia/cms/dist/mock/*.json mock/
+```
+
+The JSON must be a valid SAP OCC CMS page response. The adapter handles both wrapped (`{ contentSlots: { contentSlot: [...] } }`) and flat shapes.
 
 ---
 
@@ -416,7 +428,7 @@ The JSON must be a valid SAP OCC CMS page response. The adapter handles both wra
 | Error | Cause | Fix |
 |-------|-------|-----|
 | Slot renders empty | typeCode not in registry | Add `componentRegistry.register('Type', Component)` |
-| `404` from `getContentPage('homepage')` (mock mode) | Missing JSON | Create `src/mock/homepage.json` |
+| `404` from `getContentPage('homepage')` (mock mode) | Missing JSON | Create `mock/homepage.json` at project root |
 | `404` from `getContentPage('homepage')` (live) | Wrong page label | Check `cms.pageLabels` matches your backend's UIDs |
 | `401` from CMS endpoint | No machine token | Check [auth-server wiring](/wiring/auth-server) |
 | Live preview doesn't refresh | Forgot `client` prop on provider | Pass `client={cmsClient}` to `CmsPageProvider` |
@@ -430,5 +442,5 @@ The JSON must be a valid SAP OCC CMS page response. The adapter handles both wra
 - [ ] `componentRegistry.register()` called for **every** typeCode in the config list
 - [ ] Registration runs **once** at module load (not inside a component)
 - [ ] `<CmsPageProvider>` wraps any page tree using `<CmsSlotRenderer>`
-- [ ] Mock JSON filenames match page labels exactly (case-sensitive)
+- [ ] Mock JSON files are in `mock/` at project root, filenames match page labels exactly (case-sensitive)
 - [ ] `USE_CMS_MOCK=false` in `.env` when connecting to live backend

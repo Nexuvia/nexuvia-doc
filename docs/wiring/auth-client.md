@@ -28,37 +28,49 @@ This is the most route-heavy library — but each route is short. Pick your tab 
 
 ## Step 1 — Config + bridge
 
+`storeConfigProvider` **must be defined directly in `nexuvia.config.ts`** — `NexuviaApp` validates it at startup before any route runs.
+
 ```ts
 // nexuvia.config.ts
+import type { AzureStoreConfig } from '@nexuvia/auth-client';
+
 authClient: {
   session: {
-    cookieName:      'nexuvia_session',
-    nonceCookieName: 'nexuvia_nonce',
-    storeCookieName: 'nexuvia_store',
-    encryptionKey:   process.env.AUTH_ENCRYPTION_KEY || '',
+    encryptionKey:   process.env.AUTH_ENCRYPTION_KEY    || '',
     secureCookies:   process.env.NODE_ENV === 'production',
+    cookieName:      'auth_session',
+    nonceCookieName: 'auth_nonce',
+    storeCookieName: 'auth_store',
   },
-  // storeConfigProvider: async (storeKey) => getAzureStoreConfig(storeKey),
-  // Required when using Azure AD B2C. Returns per-store Azure tenant credentials.
-  // redirectUri lives inside AzureStoreConfig returned by this function — NOT in top-level config.
+  storeConfigProvider: async (storeKey: string): Promise<AzureStoreConfig> => {
+    return {
+      authority:    process.env[`AZURE_AUTHORITY_${storeKey.toUpperCase()}`]     || '',
+      clientId:     process.env[`AZURE_CLIENT_ID_${storeKey.toUpperCase()}`]     || '',
+      clientSecret: process.env[`AZURE_CLIENT_SECRET_${storeKey.toUpperCase()}`] || '',
+      scope:        'openid profile offline_access',
+      redirectUri:  process.env[`AZURE_REDIRECT_URI_${storeKey.toUpperCase()}`]  || 'http://localhost:3000/auth/callback',
+    };
+  },
 },
 ```
 
 `.env.local`:
 
 ```bash
-AUTH_ENCRYPTION_KEY=use-a-random-32-character-string
-# redirectUri is returned per-store from storeConfigProvider, e.g.:
+AUTH_ENCRYPTION_KEY=your-32-byte-hex-key
+AZURE_AUTHORITY_AE=https://login.microsoftonline.com/your-tenant
+AZURE_CLIENT_ID_AE=your-client-id
+AZURE_CLIENT_SECRET_AE=your-client-secret
 AZURE_REDIRECT_URI_AE=http://localhost:3000/auth/callback
 ```
 
-Generate the key once and keep it stable across server restarts:
+Generate `AUTH_ENCRYPTION_KEY` once and keep it stable across restarts:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-The bridge file `config/auth.ts` calls `registerAuthConfig()` at module load. See its full template in [Config Bridge](/wiring/config-bridge).
+`config/auth.ts` is just one line — it re-registers the same config so route handlers have it in their module context. See [Config Bridge](/wiring/config-bridge) for the full file.
 
 ---
 
@@ -74,31 +86,29 @@ Generates Azure URL, sets short-lived nonce/store cookies, returns `{ redirectUr
 <TabItem value="nextjs" label="Next.js">
 
 ```ts
-// src/app/api/auth/login/route.ts
+// app/api/auth/login/route.ts
 import '@/config/auth';   // ← MUST be first
 import { NextRequest, NextResponse } from 'next/server';
 import {
   buildAuthUrl, buildTempCookieHeader,
-  getRegisteredAuthConfig, getAzureConfig,
+  getAzureConfig,
   NONCE_COOKIE_NAME, STORE_COOKIE_NAME,
 } from '@nexuvia/auth-client';
+import { randomBytes } from 'crypto';
 
 export async function GET(request: NextRequest) {
-  const storeKey    = request.nextUrl.searchParams.get('store') || '';
-  const authConfig  = getRegisteredAuthConfig();
+  const storeKey    = request.nextUrl.searchParams.get('store') ?? 'ae';
   const azureConfig = await getAzureConfig(storeKey);
-  const nonce       = crypto.randomUUID();
-  const origin      = `${request.headers.get('x-forwarded-proto') || new URL(request.url).protocol}//${request.headers.get('host')}`;
-  const state       = Buffer.from(JSON.stringify({ nonce, origin })).toString('base64url');
+
+  const nonce       = randomBytes(16).toString('hex');
+  const state       = Buffer.from(JSON.stringify({ storeKey, nonce })).toString('base64url');
   const redirectUrl = buildAuthUrl(azureConfig, nonce, state);
 
-  const secureCookies   = authConfig.session.secureCookies !== false;
-  const nonceCookieName = authConfig.session.nonceCookieName ?? NONCE_COOKIE_NAME;
-  const storeCookieName = authConfig.session.storeCookieName ?? STORE_COOKIE_NAME;
+  const secure = process.env.NODE_ENV === 'production';
 
   const response = NextResponse.json({ redirectUrl });
-  response.headers.append('Set-Cookie', buildTempCookieHeader(nonceCookieName, nonce,    secureCookies));
-  response.headers.append('Set-Cookie', buildTempCookieHeader(storeCookieName, storeKey, secureCookies));
+  response.headers.append('Set-Cookie', buildTempCookieHeader(NONCE_COOKIE_NAME, nonce,    secure));
+  response.headers.append('Set-Cookie', buildTempCookieHeader(STORE_COOKIE_NAME, storeKey, secure));
   return response;
 }
 ```
@@ -184,52 +194,55 @@ The callback **must** live at `/auth/callback`, not `/api/auth/callback`. Azure 
 <TabItem value="nextjs" label="Next.js">
 
 ```ts
-// src/app/auth/callback/route.ts   ← NOT /api/auth/callback
+// app/auth/callback/route.ts   ← NOT /api/auth/callback
 import '@/config/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   exchangeCodeForToken, extractUserFromToken,
   encryptSession, buildSessionCookieHeader, buildClearCookieHeader, readCookie,
-  getRegisteredAuthConfig, getAzureConfig, storeAccessToken,
+  getRegisteredAuthConfig, getAzureConfig,
   NONCE_COOKIE_NAME, STORE_COOKIE_NAME,
 } from '@nexuvia/auth-client';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const code   = searchParams.get('code');
-  const state  = searchParams.get('state');
-  if (!code || !state) return NextResponse.redirect(new URL('/?auth_error=missing_params', request.url));
+  const { searchParams } = request.nextUrl;
+  const code  = searchParams.get('code');
+  const state = searchParams.get('state');
+  if (!code || !state) return NextResponse.redirect(new URL('/en?error=missing_params', request.url));
 
-  const authConfig    = getRegisteredAuthConfig();
-  const cookieHeader  = request.headers.get('cookie');
-  const nonceName     = authConfig.session.nonceCookieName ?? NONCE_COOKIE_NAME;
-  const storeName     = authConfig.session.storeCookieName ?? STORE_COOKIE_NAME;
-
-  let parsed: { nonce: string; origin: string };
-  try { parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')); }
-  catch { return NextResponse.redirect(new URL('/?auth_error=invalid_state', request.url)); }
-
-  const cookieNonce = readCookie(cookieHeader, nonceName);
-  if (parsed.nonce !== cookieNonce) {
-    return NextResponse.redirect(new URL('/?auth_error=csrf_failed', request.url));
+  // storeKey is encoded in state — not in a cookie — so it survives cross-origin redirects.
+  let storeKey = 'ae';
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+    storeKey = decoded.storeKey ?? 'ae';
+  } catch {
+    return NextResponse.redirect(new URL('/en?error=invalid_state', request.url));
   }
 
-  const storeKey    = readCookie(cookieHeader, storeName) || '';
-  const azureConfig = await getAzureConfig(storeKey);
-  const token       = await exchangeCodeForToken(code, azureConfig);
-  const user        = extractUserFromToken(token.id_token);
-
-  if (token.access_token) {
-    storeAccessToken(user.id, token.access_token, Date.now() + token.expires_in * 1000);
+  const cookieHeader = request.headers.get('cookie');
+  const savedNonce   = readCookie(cookieHeader, NONCE_COOKIE_NAME);
+  if (!savedNonce) {
+    return NextResponse.redirect(new URL('/en?error=missing_nonce', request.url));
   }
 
-  const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
-  const encrypted = encryptSession({ user }, authConfig.session.encryptionKey);
-  const response  = NextResponse.redirect(`${parsed.origin}/`);
-  response.headers.append('Set-Cookie', buildSessionCookieHeader(encrypted, authConfig, SESSION_MAX_AGE_SECONDS));
-  response.headers.append('Set-Cookie', buildClearCookieHeader(nonceName, authConfig.session.secureCookies !== false));
-  response.headers.append('Set-Cookie', buildClearCookieHeader(storeName, authConfig.session.secureCookies !== false));
-  return response;
+  try {
+    const azureConfig    = await getAzureConfig(storeKey);
+    const tokenResp      = await exchangeCodeForToken(code, azureConfig);
+    const user           = extractUserFromToken(tokenResp.id_token);
+    const authConfig     = getRegisteredAuthConfig();
+
+    const secure         = process.env.NODE_ENV === 'production';
+    const encryptedSession = encryptSession({ user }, authConfig.session.encryptionKey);
+
+    const response = NextResponse.redirect(new URL('/en', request.url));
+    response.headers.append('Set-Cookie', buildSessionCookieHeader(encryptedSession, authConfig));
+    response.headers.append('Set-Cookie', buildClearCookieHeader(NONCE_COOKIE_NAME, secure));
+    response.headers.append('Set-Cookie', buildClearCookieHeader(STORE_COOKIE_NAME, secure));
+    return response;
+  } catch (err) {
+    console.error('[auth/callback] token exchange failed', err);
+    return NextResponse.redirect(new URL('/en?error=auth_failed', request.url));
+  }
 }
 ```
 
@@ -398,29 +411,31 @@ Clears session, returns Azure logout URL.
 <TabItem value="nextjs" label="Next.js">
 
 ```ts
-// src/app/api/auth/logout/route.ts
+// app/api/auth/logout/route.ts
 import '@/config/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   buildLogoutUrl, buildClearCookieHeader,
-  getSession, getRegisteredAuthConfig, getAzureConfig,
-  clearAccessToken, SESSION_COOKIE_NAME,
+  getAzureConfig, readCookie,
+  SESSION_COOKIE_NAME, STORE_COOKIE_NAME,
 } from '@nexuvia/auth-client';
 
 export async function POST(request: NextRequest) {
-  const authConfig = getRegisteredAuthConfig();
-  const storeKey   = request.nextUrl.searchParams.get('store') || '';
-  const cookie     = request.headers.get('cookie');
-  const user       = getSession(cookie, authConfig);
-  if (user?.id) clearAccessToken(user.id);
+  const cookieHeader = request.headers.get('cookie');
+  // storeKey stored in cookie at login time — not passed as query param.
+  const storeKey     = readCookie(cookieHeader, STORE_COOKIE_NAME) ?? 'ae';
 
-  const azureConfig = await getAzureConfig(storeKey);
-  const origin      = `${request.headers.get('x-forwarded-proto') || new URL(request.url).protocol}//${request.headers.get('host')}`;
-  const redirectUrl = buildLogoutUrl(azureConfig, `${origin}/`);
-  const cookieName  = authConfig.session.cookieName ?? SESSION_COOKIE_NAME;
+  const azureConf = await getAzureConfig(storeKey).catch(() => null);
+  const secure    = process.env.NODE_ENV === 'production';
+
+  const postLogoutUri = new URL('/en', request.url).toString();
+  const redirectUrl   = azureConf
+    ? buildLogoutUrl(azureConf, postLogoutUri)
+    : postLogoutUri;
 
   const response = NextResponse.json({ redirectUrl });
-  response.headers.append('Set-Cookie', buildClearCookieHeader(cookieName, authConfig.session.secureCookies !== false));
+  response.headers.append('Set-Cookie', buildClearCookieHeader(SESSION_COOKIE_NAME, secure));
+  response.headers.append('Set-Cookie', buildClearCookieHeader(STORE_COOKIE_NAME,   secure));
   return response;
 }
 ```

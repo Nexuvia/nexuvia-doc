@@ -3,8 +3,7 @@ title: Angular
 sidebar_position: 4
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+<!--
 
 ## Angular — Complete Wiring Guide
 
@@ -819,3 +818,4 @@ export default server;
 - [ ] Auth callback handled before Angular SSR catch-all (`server.get('*', ...)`)
 - [ ] Cart routes use `ctx.cart.server` — never `ProxyCartAdapter` in `server.ts`
 - [ ] `OAUTH_CLIENT_SECRET` and `AUTH_ENCRYPTION_KEY` in server environment only — never in `environment.ts`
+-->
