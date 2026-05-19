@@ -159,22 +159,23 @@ const results = await client.searchByTerm('test');
 
 ## React integration
 
+`NexuviaProvider` from `@nexuvia/react` mounts `SearchProvider` internally — `useSearch()` is available anywhere inside it:
+
 ```tsx
-import { useSearch } from '@/providers/search-provider';
+import { useSearch } from '@nexuvia/react';
+import { useEffect } from 'react';
 
 export function SearchPage() {
-  const { results, isLoading, search } = useSearch();
+  const { result, isLoading, searchByTerm } = useSearch();
 
-  useEffect(() => {
-    search('laptop');
-  }, []);
+  useEffect(() => { searchByTerm('laptop'); }, []);
 
-  if (isLoading)  return <p>Searching…</p>;
-  if (!results)   return null;
+  if (isLoading) return <p>Searching…</p>;
+  if (!result)   return null;
 
   return (
     <ul>
-      {results.products.map(p => (
+      {result.products.map(p => (
         <li key={p.code}>{p.name} — {p.price?.formattedValue}</li>
       ))}
     </ul>

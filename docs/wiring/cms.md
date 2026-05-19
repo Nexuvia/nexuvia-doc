@@ -21,7 +21,7 @@ CMS wiring has **3 simple parts** — and they are nearly identical across frame
 | Layer | What |
 |-------|------|
 | **Layer 1** — Config | `cms.useMock`, `cms.pageLabels`, `cms.componentTypes` in `nexuvia.config.ts` |
-| **Layer 1** — Bridge | `createCmsClient(occClient)` in your `config/server.ts` |
+| **Layer 1** — Bridge | `app.forRequest(storeKey, lang)` → `ctx.cms` (via `NexuviaApp`) |
 | **Layer 1** — Registry | `registerDefaultCmsComponents()` — runs once on app startup |
 | **Layer 2** — Server route | None for SSR pages. **Optional** `/api/cms/pages` if browser fetches |
 | **Layer 3** — Wrapper | `CmsPageProvider` (React) / `provide('page', …)` (Vue) / `CmsService` (Angular) |
@@ -154,16 +154,14 @@ This happens server-side. The page is fetched **once** and passed into your UI t
 ```tsx
 // app/[lang]/page.tsx
 import { headers } from 'next/headers';
-import { createServerOccClient, createCmsClient } from '@/config/server';
+import { app }     from '@/nexuvia.app';
 import { HomePageClient } from './page-client';
 
 export default async function HomePage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang }  = await params;
-  const hdrs      = await headers();
-  const storeKey  = hdrs.get('x-store-key') ?? 'ae';
-  const occ       = createServerOccClient(storeKey, lang);   // synchronous
-  const cms       = createCmsClient(occ);
-  const page      = await cms.getContentPage('homepage').catch(() => null);
+  const storeKey  = (await headers()).get('x-store-key') ?? 'ae';
+  const ctx       = await app.forRequest(storeKey, lang);
+  const page      = await ctx.cms.getContentPage('homepage').catch(() => null);
 
   return <HomePageClient page={page} />;
 }
@@ -175,14 +173,14 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
 ```ts
 // server/routes/cms.ts
 import { Router } from 'express';
-import { createServerOccClient, createCmsClient } from '../config/server';
+import { app }    from '../../nexuvia.app';
 
 const router = Router();
 
 router.get('/api/cms/pages', async (req, res) => {
-  const { label, storeKey, lang } = req.query;
-  const occClient = await createServerOccClient(storeKey as string, lang as string);
-  const page      = await createCmsClient(occClient).getContentPage(label as string);
+  const { label, storeKey = 'default', lang = 'en' } = req.query;
+  const ctx  = await app.forRequest(storeKey as string, lang as string);
+  const page = await ctx.cms.getContentPage(label as string);
   res.json(page);
 });
 
@@ -213,12 +211,12 @@ const { data: page } = await useFetch('/api/cms/pages', {
 
 ```ts
 // server/api/cms/pages.get.ts
-import { createServerOccClient, createCmsClient } from '~/config/server';
+import { app } from '~/nexuvia.app';
 
 export default defineEventHandler(async (event) => {
-  const { label, storeKey, lang } = getQuery(event);
-  const occClient = await createServerOccClient(storeKey as string, lang as string);
-  return await createCmsClient(occClient).getContentPage(label as string);
+  const { label, storeKey = 'default', lang = 'en' } = getQuery(event);
+  const ctx = await app.forRequest(storeKey as string, lang as string);
+  return await ctx.cms.getContentPage(label as string);
 });
 ```
 

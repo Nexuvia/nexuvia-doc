@@ -79,40 +79,49 @@ OAUTH_CLIENT_ID=mobile_android
 OAUTH_CLIENT_SECRET=your_client_secret_here
 ```
 
-### Step 3 — Use via server factory
+### Step 3 — Token injection is automatic with NexuviaApp
 
-In Next.js, you don't call `getStaticToken()` directly from pages — the factory in `src/config/server.ts` handles it:
+When using `NexuviaApp`, `ctx.occ` already has the machine token injected — you never call `getStaticToken()` directly in pages:
 
 ```ts
-// src/config/server.ts
+// nexuvia.app.ts
+import { NexuviaApp } from '@nexuvia/app';
+import config from './nexuvia.config';
+
+export const app = new NexuviaApp(config);
+```
+
+```ts
+// src/app/[lang]/page.tsx
+import { app }     from '@/nexuvia.app';
+import { headers } from 'next/headers';
+
+export default async function Page({ params }) {
+  const { lang }  = await params;
+  const storeKey  = (await headers()).get('x-store-key') ?? 'ae';
+  const ctx       = await app.forRequest(storeKey, lang);
+  // ctx.occ already has Authorization: Bearer <token> on all CMS requests
+  const page = await ctx.cms.getContentPage('homepage');
+}
+```
+
+For manual wiring (without `NexuviaApp`), call `getStaticToken()` in your server factory:
+
+```ts
+// config/server.ts — manual approach
 import { getStaticToken } from '@nexuvia/auth-server';
+import { OccClient } from '@nexuvia/occ';
 
 export async function createServerOccClient(storeKey: string, lang: string) {
   const client = new OccClient(getOccConfig(), store.baseSite, lang);
-
-  const token = await getStaticToken({
+  const token  = await getStaticToken({
     baseUrl:       buildHybrisBaseUrl(),
     clientId:      config.authServer.clientId,
     clientSecret:  config.authServer.clientSecret,
     tokenEndpoint: config.authServer.tokenEndpoint,
   });
-
   if (token) client.setAccessToken(token);
   return client;
-}
-```
-
-### Step 4 — Use in a Server Component
-
-```ts
-import { headers } from 'next/headers';
-import { createServerOccClient } from '@/config/server';
-
-export default async function Page({ params }) {
-  const { lang }   = await params;
-  const storeKey   = (await headers()).get('x-store-key') ?? 'ae';
-  const client     = await createServerOccClient(storeKey, lang);
-  // client now has Authorization: Bearer <token> on all requests
 }
 ```
 

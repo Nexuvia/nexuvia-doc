@@ -44,50 +44,48 @@ The same logic in 4 frameworks. Pick your tab.
 Create `src/app/api/cart/route.ts`:
 
 ```ts
-import { NextRequest, NextResponse }   from 'next/server';
-import { createRouteOccClient }        from '@/config/api-helpers';
-import { OccCartAdapter }              from '@nexuvia/cart/server';
-import { NotFoundError, AdapterError } from '@nexuvia/core';
+import { NextRequest, NextResponse } from 'next/server';
+import { app } from '@/nexuvia.app';
 
-function adapter(req: NextRequest, baseSite?: string, lang?: string) {
-  const url    = new URL(req.url);
-  const site   = baseSite || url.searchParams.get('baseSite') || 'shop';
-  const l      = lang     || url.searchParams.get('lang')     || 'en';
-  const client = createRouteOccClient(site, l);
-  const auth   = req.headers.get('authorization');
-  if (auth) client.setAccessToken(auth.replace('Bearer ', ''));
-  return new OccCartAdapter(client);
+async function getAdapter(req: NextRequest, lang = 'en') {
+  const storeKey = req.headers.get('x-store-key') ?? 'ae';
+  const ctx      = await app.forRequest(storeKey, lang);
+  return ctx.cart.server;
 }
 
 export async function GET(req: NextRequest) {
-  const cartId = new URL(req.url).searchParams.get('cartId');
+  const { searchParams } = new URL(req.url);
+  const cartId = searchParams.get('cartId');
+  const lang   = searchParams.get('lang') ?? 'en';
   if (!cartId) return NextResponse.json({ error: 'Missing cartId' }, { status: 400 });
   try {
-    const cart = await adapter(req).getCart(cartId);
+    const cart = await (await getAdapter(req, lang)).getCart(cartId);
     return NextResponse.json(cart);
-  } catch (e) {
-    if (e instanceof NotFoundError) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    throw e;
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
-  const { cartId, baseSite, language, productCode, quantity = 1 } = await req.json();
-  const result = await adapter(req, baseSite, language).addToCart(cartId ?? null, { productCode, quantity });
-  return NextResponse.json(result);
+  const { lang = 'en', cartId, productCode, quantity = 1 } = await req.json();
+  const adapter = await getAdapter(req, lang);
+  const id      = cartId ?? await adapter.createCart();
+  const result  = await adapter.addToCart(id, { productCode, quantity });
+  return NextResponse.json({ cartId: id, result });
 }
 
 export async function PATCH(req: NextRequest) {
-  const { cartId, baseSite, language, entryNumber, quantity } = await req.json();
-  const result = await adapter(req, baseSite, language).patchEntry(cartId, entryNumber, quantity);
+  const { lang = 'en', cartId, entryNumber, quantity } = await req.json();
+  const result = await (await getAdapter(req, lang)).updateCartEntry(cartId, entryNumber, quantity);
   return NextResponse.json(result);
 }
 
 export async function DELETE(req: NextRequest) {
-  const url = new URL(req.url);
-  const cartId      = url.searchParams.get('cartId')!;
-  const entryNumber = Number(url.searchParams.get('entryNumber'));
-  await adapter(req).removeFromCart(cartId, entryNumber);
+  const { searchParams } = new URL(req.url);
+  const lang        = searchParams.get('lang')        ?? 'en';
+  const cartId      = searchParams.get('cartId')      ?? '';
+  const entryNumber = Number(searchParams.get('entryNumber') ?? '0');
+  await (await getAdapter(req, lang)).removeFromCart(cartId, entryNumber);
   return NextResponse.json({ success: true });
 }
 ```
@@ -312,15 +310,30 @@ export function useCart() {
 }
 ```
 
-Construct the client once in your layout:
+The recommended approach is `NexuviaProvider` with a `cart` prop — it constructs and wires `CartClient` internally:
 
 ```tsx
-// In your root client layout
+// src/app/[lang]/store-layout-client.tsx
+'use client';
+import { NexuviaProvider } from '@nexuvia/react';
+
+export function StoreLayoutClient({ children, storeKey, language }) {
+  return (
+    <NexuviaProvider storeKey={storeKey} language={language} cart={{ baseSite: storeKey, language }}>
+      {children}
+    </NexuviaProvider>
+  );
+}
+```
+
+Or wire manually:
+
+```tsx
 'use client';
 import { useMemo } from 'react';
 import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage }                from '@nexuvia/storage';
-import { CartProvider }                 from '@/providers/cart-provider';
+import { CartProvider }                 from '@nexuvia/react';
 
 export function ClientLayout({ baseSite, language, children }) {
   const client = useMemo(() => new CartClient(
@@ -446,7 +459,7 @@ export class CartService implements OnDestroy {
 
 ```tsx
 'use client';
-import { useCart } from '@/providers/cart-provider';
+import { useCart } from '@nexuvia/react';
 
 export function AddToCartButton({ code }: { code: string }) {
   const { addItem, isLoading } = useCart();
@@ -501,6 +514,69 @@ export class AddToCartComponent {
 
 </TabItem>
 </Tabs>
+
+---
+
+## Cart page — React / Next.js
+
+The cart page needs two things:
+
+1. A **Server Component** that can optionally pre-render the cart (fast first paint, works without JS)
+2. A **Client Component** that hydrates with live state via `useCart()`
+
+:::info Why call `fetchCart()` on mount?
+`CartClient` stores the cart ID in a cookie. On initial render the state is empty — the client hasn't read the cookie yet. Call `fetchCart()` once on mount to load the cart from the server.
+:::
+
+```tsx
+// src/app/[lang]/cart/page.tsx  (Server Component — minimal shell)
+export default function CartPage() {
+  return <CartPageClient />;
+}
+```
+
+```tsx
+// src/app/[lang]/cart/page-client.tsx
+'use client';
+import { useEffect }  from 'react';
+import { useCart }    from '@nexuvia/react';
+
+export default function CartPageClient() {
+  const { cart, isLoading, fetchCart, removeFromCart, updateCartEntry } = useCart();
+
+  // Populate cart from the cookie on first render
+  useEffect(() => { fetchCart(); }, []);
+
+  if (isLoading) return <p>Loading cart…</p>;
+  if (!cart || cart.entries.length === 0) return <p>Your cart is empty.</p>;
+
+  return (
+    <div>
+      <h1>Your Cart ({cart.totalItems} items)</h1>
+      <ul>
+        {cart.entries.map(entry => (
+          <li key={entry.entryNumber}>
+            <span>{entry.product.name}</span>
+            <input
+              type="number"
+              defaultValue={entry.quantity}
+              min={1}
+              onBlur={e => updateCartEntry(entry.entryNumber, Number(e.target.value))}
+            />
+            <span>{entry.totalPrice?.formattedValue}</span>
+            <button onClick={() => removeFromCart(entry.entryNumber)}>Remove</button>
+          </li>
+        ))}
+      </ul>
+      <p><strong>Total: {cart.totalPrice?.formattedValue}</strong></p>
+    </div>
+  );
+}
+```
+
+:::warning Don't fetch cart server-side on the cart page
+You might be tempted to call `ctx.cart.server.getCart(cartId)` in the Server Component, but the `cartId` lives in a browser cookie — the server can't read it without passing the `Cookie` header explicitly. Use `fetchCart()` on the client instead. Server-side cart access is for **checkout** flows where you control the cookie forwarding.
+:::
 
 ---
 

@@ -29,17 +29,16 @@ The product is fetched server-side, passed to your UI tree as a prop. No reactiv
 ```tsx
 // src/app/[lang]/p/[code]/page.tsx
 import { headers } from 'next/headers';
-import { createServerOccClient } from '@/config/server';
-import { OccProductAdapter }     from '@nexuvia/product';
-import { notFound }              from 'next/navigation';
-import ProductPageClient         from './page-client';
+import { app }     from '@/nexuvia.app';
+import { notFound } from 'next/navigation';
+import ProductPageClient from './page-client';
 
 export default async function ProductPage({ params }) {
   const { lang, code } = await params;
   const storeKey       = (await headers()).get('x-store-key') ?? '';
-  const occClient      = await createServerOccClient(storeKey, lang);
 
-  const product = await new OccProductAdapter(occClient).getProduct(code);
+  const ctx     = await app.forRequest(storeKey, lang);
+  const product = await ctx.product.getProduct(code);
   if (!product) notFound();
 
   return <ProductPageClient product={product} />;
@@ -52,16 +51,15 @@ export default async function ProductPage({ params }) {
 ```ts
 // server/routes/product.ts
 import { Router } from 'express';
-import { createServerOccClient } from '../config/server';
-import { OccProductAdapter }     from '@nexuvia/product';
+import { app }    from '../../nexuvia.app';
 
 const router = Router();
 
 router.get('/api/products/:code', async (req, res) => {
-  const { code }    = req.params;
-  const { storeKey, lang } = req.query as any;
-  const occClient   = await createServerOccClient(storeKey, lang);
-  const product     = await new OccProductAdapter(occClient).getProduct(code);
+  const { code }           = req.params;
+  const { storeKey = 'default', lang = 'en' } = req.query as any;
+  const ctx     = await app.forRequest(storeKey, lang);
+  const product = await ctx.product.getProduct(code);
   if (!product) return res.status(404).json({ error: 'Not found' });
   res.json(product);
 });
@@ -76,14 +74,13 @@ The browser then `fetch('/api/products/' + code)` and renders the JSON.
 
 ```ts
 // server/api/products/[code].get.ts
-import { createServerOccClient } from '~/config/server';
-import { OccProductAdapter }     from '@nexuvia/product';
+import { app } from '~/nexuvia.app';
 
 export default defineEventHandler(async (event) => {
   const code = getRouterParam(event, 'code')!;
-  const { storeKey, lang } = getQuery(event) as any;
-  const occClient = await createServerOccClient(storeKey, lang);
-  const product   = await new OccProductAdapter(occClient).getProduct(code);
+  const { storeKey = 'default', lang = 'en' } = getQuery(event) as any;
+  const ctx     = await app.forRequest(storeKey, lang);
+  const product = await ctx.product.getProduct(code);
   if (!product) throw createError({ statusCode: 404 });
   return product;
 });
@@ -102,11 +99,13 @@ const { data: product } = await useFetch(`/api/products/${route.params.code}`);
 
 ```ts
 // server.ts (Express handler)
+import { app } from './nexuvia.app';
+
 server.get('/api/products/:code', async (req, res) => {
-  const { code }           = req.params;
-  const { storeKey, lang } = req.query as any;
-  const occClient = await createServerOccClient(storeKey, lang);
-  const product   = await new OccProductAdapter(occClient).getProduct(code);
+  const { code }                           = req.params;
+  const { storeKey = 'default', lang = 'en' } = req.query as any;
+  const ctx     = await app.forRequest(storeKey, lang);
+  const product = await ctx.product.getProduct(code);
   if (!product) return res.status(404).json({ error: 'Not found' });
   res.json(product);
 });
@@ -123,44 +122,37 @@ That's it for Mode 1 — no provider, no Layer 3 wrapper.
 
 Use this only when components mutate state (e.g. posting a review and seeing the list refresh automatically).
 
-### Provider / composable / service
+### React — use `useProduct` from `@nexuvia/react`
 
-<Tabs groupId="framework">
-<TabItem value="react" label="React">
+`NexuviaProvider` wires the product context internally. No provider file needed:
 
 ```tsx
-// src/providers/product-provider.tsx
 'use client';
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import type { ProductClient, ProductClientState } from '@nexuvia/product';
+import { useProduct } from '@nexuvia/react';
+import { useEffect }  from 'react';
 
-const Ctx = createContext<any>(null);
+export function ReviewSection({ code }: { code: string }) {
+  const { reviews, isLoading, getReviews, postReview } = useProduct();
 
-export function ProductProvider({ client, children }: { client: ProductClient; children: ReactNode }) {
-  const [state, setState] = useState<ProductClientState>(() => client.getState());
-  useEffect(() => {
-    const off1 = client.on('product', () => setState(client.getState()));
-    const off2 = client.on('reviews', () => setState(client.getState()));
-    const off3 = client.on('error',   () => setState(client.getState()));
-    return () => { off1(); off2(); off3(); };
-  }, [client]);
+  useEffect(() => { getReviews(code); }, [code]);
 
-  return <Ctx.Provider value={{
-    ...state,
-    getProduct: useCallback((c: string) => client.getProduct(c), [client]),
-    getReviews: useCallback((c: string) => client.getReviews(c), [client]),
-    postReview: useCallback((c: string, r: any) => client.postReview(c, r), [client]),
-  }}>{children}</Ctx.Provider>;
+  return (
+    <div>
+      {reviews.map(r => <p key={r.id}>{r.headline} — {r.rating}/5</p>)}
+      <button onClick={() => postReview(code, { headline: 'Great!', comment: 'Love it', rating: 5 })}>
+        Post review
+      </button>
+    </div>
+  );
 }
-
-export const useProduct = () => {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useProduct() must be used inside <ProductProvider>');
-  return ctx;
-};
 ```
 
-</TabItem>
+After `postReview`, the reviews cache auto-invalidates and re-fetches — the component re-renders with fresh data automatically.
+
+### Vue / Angular — manual composable / service
+
+<Tabs groupId="framework">
+<TabItem value="vue" label="Vue 3">
 <TabItem value="vue" label="Vue 3">
 
 ```ts
@@ -227,8 +219,6 @@ export class ProductService implements OnDestroy {
 
 </TabItem>
 </Tabs>
-
-After `postReview`, the reviews cache invalidates and re-fetches automatically — your UI updates with no manual refresh.
 
 ---
 

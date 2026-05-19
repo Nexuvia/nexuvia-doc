@@ -7,7 +7,7 @@ sidebar_position: 12
 
 Analytics event tracking with adapter pattern and GTM implementation.
 
-**Framework-agnostic — pure TypeScript core. React layer (`GtmScript`, `AnalyticsProvider`) in `src/providers/`.**
+**Framework-agnostic — pure TypeScript core. React layer (`GtmScript`, `useAnalytics`) in `@nexuvia/react`.**
 
 ---
 
@@ -61,24 +61,34 @@ analytics: {
 
 Leave empty to safely disable GTM in local dev — `GtmScript` only renders when `containerId` is non-empty.
 
-### Step 2 — Wire in store layout client
+### Step 2 — Wire via NexuviaProvider
+
+`NexuviaProvider` from `@nexuvia/react` composes `AnalyticsProvider` internally when you pass `analytics` config:
 
 ```tsx
 // src/app/[lang]/store-layout-client.tsx
-import { GtmAnalyticsAdapter, AnalyticsClient, GtmScript } from '@nexuvia/analytics';
-import { AnalyticsProvider } from '@/providers/analytics-provider';
+'use client';
+
+import { NexuviaProvider } from '@nexuvia/react';
+import { GtmScript }       from '@nexuvia/analytics';
 import config from '../../../nexuvia.config';
 
-const analyticsClient = useMemo(() => {
-  const adapter = new GtmAnalyticsAdapter({ containerId: config.analytics.gtmContainerId });
-  return new AnalyticsClient(adapter);
-}, []);
-
-// In JSX:
-<AnalyticsProvider client={analyticsClient}>
-  <GtmScript containerId={config.analytics.gtmContainerId} />
-  {children}
-</AnalyticsProvider>
+export function StoreLayoutClient({ children, storeKey, language }) {
+  return (
+    <>
+      {config.analytics.gtmContainerId && (
+        <GtmScript containerId={config.analytics.gtmContainerId} />
+      )}
+      <NexuviaProvider
+        storeKey={storeKey}
+        language={language}
+        analytics={{ gtmContainerId: config.analytics.gtmContainerId }}
+      >
+        {children}
+      </NexuviaProvider>
+    </>
+  );
+}
 ```
 
 ### Step 3 — Use in components
@@ -86,9 +96,9 @@ const analyticsClient = useMemo(() => {
 ```tsx
 'use client';
 
-import { useAnalytics } from '@/providers/analytics-provider';
+import { useAnalytics } from '@nexuvia/react';
 
-// Import from providers — NOT from @nexuvia/analytics
+// Import from @nexuvia/react — NOT from @nexuvia/analytics
 ```
 
 ---

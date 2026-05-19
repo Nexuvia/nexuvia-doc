@@ -7,7 +7,7 @@ sidebar_position: 8
 
 CMS page fetching, normalization, caching, and component registry.
 
-**Framework-agnostic — pure TypeScript core. React layer lives in `src/providers/`.**
+**Framework-agnostic — pure TypeScript core. React layer (`useCmsPage`, `CmsPageProvider`, `CmsSlotRenderer`) lives in `@nexuvia/react` and `@nexuvia/cms/client`.**
 
 ---
 
@@ -130,16 +130,18 @@ import '@/app/_cms-defaults';
 
 ### Step 3 — Fetch a page (Server Component)
 
+Use `NexuviaApp` — `ctx.cms` is pre-wired with machine token and correct baseSite:
+
 ```ts
+import { app }     from '@/nexuvia.app';
 import { headers } from 'next/headers';
-import { createServerOccClient, createCmsClient } from '@/config/server';
-import { PageLabel } from '@nexuvia/cms';
 
 export default async function HomePage({ params }) {
   const { lang }    = await params;
-  const storeKey    = (await headers()).get('x-store-key') ?? 'ae';
-  const occClient   = await createServerOccClient(storeKey, lang);
-  const page        = await createCmsClient(occClient).getContentPage(PageLabel.FRONTPAGE);
+  const h           = await headers();
+  const storeKey    = h.get('x-store-key') ?? 'ae';
+  const ctx         = await app.forRequest(storeKey, lang);
+  const page        = await ctx.cms.getContentPage('homepage');
 
   return <HomePageClient page={page} />;
 }

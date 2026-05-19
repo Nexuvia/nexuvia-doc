@@ -115,10 +115,28 @@ Replace `GTM-XXXXXXX` with your container ID.
 
 ## Step 3 — Construct + wrap the analytics client
 
-<Tabs groupId="framework">
-<TabItem value="react" label="React">
+:::tip Shortcut with `@nexuvia/react`
+If you use `@nexuvia/react`, pass `gtmContainerId` to `NexuviaProvider` — no manual provider file needed:
 
-Provider lives in `src/providers/analytics-provider.tsx`:
+```tsx
+<NexuviaProvider
+  storeKey={storeKey}
+  language={language}
+  storeConfig={storeConfig}
+  cartClientConfig={cartClientConfig}
+  gtmContainerId={config.analytics.gtmContainerId}
+>
+  {children}
+</NexuviaProvider>
+```
+
+Then anywhere: `import { useAnalytics } from '@nexuvia/react'`. The manual tab below is for Vue/Angular or when using Nexuvia without `@nexuvia/react`.
+:::
+
+<Tabs groupId="framework">
+<TabItem value="react" label="React (manual)">
+
+Provider lives in `src/providers/analytics-provider.tsx` — only needed **without** `@nexuvia/react`:
 
 ```tsx
 'use client';

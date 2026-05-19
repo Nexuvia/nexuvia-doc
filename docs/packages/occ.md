@@ -167,13 +167,16 @@ try {
 
 ## In a Next.js Server Component
 
-In this project, use the factory from `src/config/server.ts` — it handles token injection automatically:
+Use `NexuviaApp` — `ctx.occ` is pre-wired with the machine token, correct baseSite, and language:
 
 ```ts
-import { createServerOccClient } from '@/config/server';
+import { app }     from '@/nexuvia.app';
+import { headers } from 'next/headers';
 
-const client = await createServerOccClient(storeKey, lang);
-const res    = await client.get('products/12345');
+const h        = await headers();
+const storeKey = h.get('x-store-key') ?? 'ae';
+const ctx      = await app.forRequest(storeKey, lang);
+const res      = await ctx.occ.get('products/12345');
 ```
 
 ---
@@ -220,4 +223,4 @@ interface OccRequestOptions {
 - [ ] Public endpoints — no token needed
 - [ ] CMS/SmartEdit — `setAccessToken()` + `setBasePath('/customws')`
 - [ ] User endpoints — `getAccessToken(userId)` + `setAccessToken()`
-- [ ] Always use the `createServerOccClient` factory in Next.js pages — don't create clients manually
+- [ ] In Next.js pages, use `app.forRequest()` → `ctx.occ` — don't create `OccClient` instances manually in page files

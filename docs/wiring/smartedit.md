@@ -42,13 +42,40 @@ Allowed origins must be your trusted SmartEdit hosts. Wildcard accepts postMessa
 
 ## Step 2 — Reactive wrapper (Layer 3)
 
+:::tip Shortcut with `@nexuvia/react`
+If you use `@nexuvia/react`, pass `smartEditConfig` to `NexuviaProvider` — no manual provider file needed:
+
+```tsx
+// src/app/[lang]/store-layout-client.tsx
+'use client';
+import { NexuviaProvider } from '@nexuvia/react';
+import config from '@/nexuvia.config';
+
+const smartEditConfig = {
+  hybrisBaseUrl:  `${config.hybris.protocol}://${config.hybris.host}`,
+  allowedOrigins: config.smartedit.allowedOrigins,
+  version:        config.smartedit.previewVersion,
+};
+
+export function StoreLayoutClient({ children, ...props }) {
+  return (
+    <NexuviaProvider {...props} smartEditConfig={smartEditConfig}>
+      {children}
+    </NexuviaProvider>
+  );
+}
+```
+
+Then anywhere: `import { useSmartEdit } from '@nexuvia/react'`. Done. The manual tab below is for Vue/Angular or when using Nexuvia without `@nexuvia/react`.
+:::
+
 The wrapper detects `?cmsTicketId=...` in the URL, activates the service, and listens for SAP postMessage events.
 
 <Tabs groupId="framework">
-<TabItem value="react" label="React">
+<TabItem value="react" label="React (manual)">
 
 ```tsx
-// src/providers/smartedit-provider.tsx
+// src/providers/smartedit-provider.tsx — only needed WITHOUT @nexuvia/react
 'use client';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';   // or useLocation in React Router
@@ -181,8 +208,7 @@ Renders nothing visible — injects SAP's `webApplicationInjector.js` and sets b
 ```tsx
 // React example
 import { SmartEditScript } from '@nexuvia/smartedit';
-import { useSmartEdit }    from '@/providers/smartedit-provider';
-import { useCmsPage }      from '@/providers/cms-provider';
+import { useSmartEdit, useCmsPage } from '@nexuvia/react';
 
 export function SmartEditScriptHost() {
   const { service } = useSmartEdit();
@@ -204,7 +230,7 @@ Every CMS component needs `data-smartedit-*` attributes when preview is active.
 // React example
 'use client';
 import { SmartEditWrapper } from '@nexuvia/smartedit';
-import { useSmartEdit }     from '@/providers/smartedit-provider';
+import { useSmartEdit }     from '@nexuvia/react';
 
 export function CmsHeader({ component }) {
   const { service } = useSmartEdit();

@@ -60,7 +60,7 @@ export default async function HomePage({ params }) {
   const ctx = await app.forRequest('ae', lang);
 
   const page    = await ctx.cms.getContentPage('homepage');
-  const results = await ctx.search.search({ query: '', lang });
+  const results = await ctx.search.searchByTerm('', { pageSize: 20 });
 
   return <HomePageClient page={page} results={results} />;
 }

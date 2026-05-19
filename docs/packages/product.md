@@ -47,13 +47,19 @@ Framework binding   React: ProductProvider + useProduct()
 ## Quick start — Next.js (Server Component)
 
 ```ts
-import { OccProductAdapter, ProductClient } from '@nexuvia/product';
-import { createServerOccClient } from '@/config/server';
+import { app }     from '@/nexuvia.app';
+import { headers } from 'next/headers';
+import { OccProductAdapter } from '@nexuvia/product';
 
-const occClient = await createServerOccClient(storeKey, lang);
-const adapter   = new OccProductAdapter(occClient);
-// For server-side one-shot fetches, use adapter directly (no event system needed):
-const product   = await adapter.getProduct('12345');
+export default async function ProductPage({ params }) {
+  const { lang, code } = await params;
+  const h              = await headers();
+  const storeKey       = h.get('x-store-key') ?? 'ae';
+  const ctx            = await app.forRequest(storeKey, lang);
+
+  // For server-side one-shot fetches, use adapter directly (no event system needed):
+  const product = await new OccProductAdapter(ctx.occ).getProduct(code);
+}
 ```
 
 ---
@@ -135,14 +141,16 @@ await client.postReview('12345', {
 
 ## React integration
 
+`NexuviaProvider` from `@nexuvia/react` mounts `ProductProvider` internally — `useProduct()` is available anywhere inside it:
+
 ```tsx
-// Using the React provider (if wired in your app):
-import { useProduct } from '@/providers/product-provider';
+import { useProduct } from '@nexuvia/react';
+import { useEffect }  from 'react';
 
 export function ProductPage({ code }: { code: string }) {
-  const { product, isLoading, load } = useProduct();
+  const { product, isLoading, getProduct } = useProduct();
 
-  useEffect(() => { load(code); }, [code]);
+  useEffect(() => { getProduct(code); }, [code]);
 
   if (isLoading) return <p>Loading…</p>;
   if (!product)  return <p>Not found</p>;

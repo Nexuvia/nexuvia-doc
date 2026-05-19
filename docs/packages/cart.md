@@ -7,7 +7,7 @@ sidebar_position: 5
 
 Cart management with lazy creation, cookie persistence, and payload extension.
 
-**Framework-agnostic — pure TypeScript core. React layer lives in `src/providers/cart-provider.tsx`.**
+**Framework-agnostic — pure TypeScript core. React layer (`useCart`, `CartProvider`) lives in `@nexuvia/react`.**
 
 ---
 
@@ -67,18 +67,39 @@ Framework binding   React: CartProvider + useCart()
 
 ## Setup — Next.js
 
+The recommended approach is `NexuviaProvider` with a `cart` prop — it constructs and wires `CartClient` internally:
+
 ```tsx
 // src/app/[lang]/store-layout-client.tsx
+'use client';
+
+import { NexuviaProvider } from '@nexuvia/react';
+
+export function StoreLayoutClient({ children, storeKey, language }) {
+  return (
+    <NexuviaProvider
+      storeKey={storeKey}
+      language={language}
+      cart={{ baseSite: storeKey, language }}
+    >
+      {children}
+    </NexuviaProvider>
+  );
+}
+```
+
+Or wire manually:
+
+```tsx
 import { CartClient, ProxyCartAdapter } from '@nexuvia/cart/client';
 import { CookieStorage } from '@nexuvia/storage';
-import { CartProvider } from '@/providers/cart-provider';
+import { CartProvider }  from '@nexuvia/react';
 
 const cartClient = useMemo(() => {
   const adapter = new ProxyCartAdapter({ baseSite: storeConfig.baseSite, language });
   return new CartClient(adapter, new CookieStorage());
 }, [storeConfig.baseSite, language]);
 
-// In JSX:
 <CartProvider client={cartClient}>
   {children}
 </CartProvider>
@@ -91,7 +112,7 @@ const cartClient = useMemo(() => {
 ```tsx
 'use client';
 
-import { useCart } from '@/providers/cart-provider';
+import { useCart } from '@nexuvia/react';
 
 export function AddToCartButton({ productCode }: { productCode: string }) {
   const { addItem, isLoading } = useCart();
@@ -110,7 +131,7 @@ export function AddToCartButton({ productCode }: { productCode: string }) {
 
 ```tsx
 import { useEffect } from 'react';
-import { useCart } from '@/providers/cart-provider';
+import { useCart } from '@nexuvia/react';
 
 export function CartPage() {
   const { cart, isLoading, fetchCart } = useCart();
@@ -191,7 +212,7 @@ const { error, addItem } = useCart();
 ```ts
 // src/app/api/cart/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteOccClient } from '@/config/api-helpers';
+import { app } from '@/nexuvia.app';
 import { OccCartAdapter } from '@nexuvia/cart/server';
 
 export async function GET(request: NextRequest) {
