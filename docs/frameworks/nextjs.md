@@ -212,10 +212,37 @@ For real projects, import `getStoreByDomain` from your config bridge or from `ne
 
 ---
 
-## Step 4 — Root layout (Server Component)
+## Step 4 — Root layout (owns `<html>` and `<body>`)
+
+:::danger One `<html>` tag total
+Next.js App Router nests layouts. If `[lang]/layout.tsx` renders its own `<html>`, you get nested `<html>` tags — React throws a hydration mismatch and the page may not render.
+
+**Rule:** Only `app/layout.tsx` renders `<html>` and `<body>`. Every nested layout returns a fragment.
+:::
 
 ```tsx
-// src/app/[lang]/layout.tsx
+// src/app/layout.tsx  ← owns html + body
+import type { ReactNode } from 'react';
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+`suppressHydrationWarning` on `<html>` and `<body>` prevents React from complaining when `lang` and `dir` are set client-side (see Step 5).
+
+---
+
+## Step 5 — Store layout (Server Component — fragment only)
+
+```tsx
+// src/app/[lang]/layout.tsx  ← returns a fragment, NOT <html>
 import { notFound }  from 'next/navigation';
 import { headers }   from 'next/headers';
 import { app }       from '../../../nexuvia.app';
@@ -233,76 +260,89 @@ export default async function StoreLayout({
 }) {
   const { lang }    = await params;
   const hdrs        = await headers();
-  const storeKey    = hdrs.get('x-store-key')    ?? 'ae';
+  const storeKey    = hdrs.get('x-store-key') ?? 'ae';
   const storeConfig = config.stores[storeKey];
 
   if (!storeConfig) notFound();
   if (!storeConfig.supportedLanguages.includes(lang)) notFound();
 
-  // Read session server-side so there is no flash-of-unauthenticated content
   const ctx         = await app.forRequest(storeKey, lang);
-  const initialUser = ctx.auth
-    ? ctx.auth.getSession(new Request('', { headers: hdrs as any }))
-    : null;
-
-  const dir = lang === 'ar' ? 'rtl' : 'ltr';
+  const cookieReq   = new Request('http://localhost', {
+    headers: { cookie: hdrs.get('cookie') ?? '' },
+  });
+  const initialUser = ctx.auth ? ctx.auth.getSession(cookieReq) : null;
+  const dir         = lang === 'ar' ? 'rtl' : 'ltr';
 
   return (
-    <html lang={lang} dir={dir}>
-      <body suppressHydrationWarning>
-        {config.analytics.gtmContainerId && (
-          <GtmScript containerId={config.analytics.gtmContainerId} />
-        )}
-        <StoreLayoutClient
-          storeKey={storeKey}
-          storeConfig={storeConfig}
-          language={lang}
-          gtmContainerId={config.analytics.gtmContainerId}
-          initialUser={initialUser ?? null}
-        >
-          {children}
-        </StoreLayoutClient>
-      </body>
-    </html>
+    <>
+      {config.analytics.gtmContainerId && (
+        <GtmScript containerId={config.analytics.gtmContainerId} />
+      )}
+      <StoreLayoutClient
+        storeKey={storeKey}
+        storeConfig={storeConfig}
+        language={lang}
+        dir={dir}
+        gtmContainerId={config.analytics.gtmContainerId}
+        initialUser={initialUser ?? null}
+      >
+        {children}
+      </StoreLayoutClient>
+    </>
   );
 }
 ```
 
+:::warning `ctx.auth.getSession()` takes a `Request`, not a string
+The installed `@nexuvia/app` implementation reads `request.headers.get('cookie')` internally. Passing the raw cookie string directly throws `Cannot read properties of undefined`. Always wrap it in a `new Request(...)`.
+:::
+
 ---
 
-## Step 5 — Store layout client (Client Component)
+## Step 6 — Store layout client (Client Component)
 
 ```tsx
 // src/app/[lang]/store-layout-client.tsx
 'use client';
 
+import { useEffect }        from 'react';
 import { NexuviaProvider }  from '@nexuvia/react';
 import type { StoreConfig } from '@nexuvia/core';
 import type { SessionUser } from '@nexuvia/auth-client';
 import type { ReactNode }   from 'react';
 import { registerDefaultCmsComponents } from '@/app/_cms-defaults';
 
-// Run once on module load — populates CMS registry before first render
 registerDefaultCmsComponents();
 
 interface Props {
   storeKey:       string;
   storeConfig:    StoreConfig;
   language:       string;
+  dir:            'ltr' | 'rtl';
   gtmContainerId: string;
   initialUser:    SessionUser | null;
   children:       ReactNode;
 }
 
 export function StoreLayoutClient({
-  storeKey, storeConfig, language, gtmContainerId, initialUser, children,
+  storeKey, storeConfig, language, dir, gtmContainerId, initialUser, children,
 }: Props) {
+  // Root layout owns <html> — set lang/dir here after hydration, not on the server
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir  = dir;
+  }, [language, dir]);
+
   return (
     <NexuviaProvider
       storeKey={storeKey}
       storeConfig={storeConfig}
       language={language}
-      cartClientConfig={{ baseSite: storeConfig.baseSite, language }}
+      cartClientConfig={{
+        baseSite: storeConfig.baseSite,
+        language,
+        apiBase:  '/api/cart',
+      }}
       gtmContainerId={gtmContainerId}
       initialUser={initialUser}
     >
@@ -312,6 +352,12 @@ export function StoreLayoutClient({
 }
 ```
 
+Key points:
+
+- `dir` prop comes from the server layout (computed from `lang`)
+- `useEffect` sets `document.documentElement.lang/dir` after hydration — avoids mismatch
+- `cartClientConfig` must include `apiBase: '/api/cart'`
+
 `NexuviaProvider` nests all internal contexts in the correct order:
 
 ```text
@@ -320,7 +366,7 @@ StoreProvider → AuthProvider → CartProvider → AnalyticsProvider → [Suspe
 
 ---
 
-## Step 6 — CMS component registry
+## Step 7 — CMS component registry
 
 ```ts
 // src/app/_cms-defaults.ts
@@ -339,15 +385,17 @@ export function registerDefaultCmsComponents() {
 
 ---
 
-## Step 7 — Server-side data fetching (pages)
+## Step 8 — Server-side data fetching (pages)
 
 ### Homepage
 
 ```tsx
 // src/app/[lang]/page.tsx
 import { headers }   from 'next/headers';
-import { app }       from '../../../nexuvia.app';
 import { notFound }  from 'next/navigation';
+import { buildCmsClient }    from '@/lib/cms-server';
+import { getProductAdapter } from '@/lib/product-server';
+import config        from '../../../nexuvia.config';
 import { HomePageClient } from './page-client';
 
 export default async function HomePage({
@@ -356,14 +404,26 @@ export default async function HomePage({
   const { lang } = await params;
   const hdrs     = await headers();
   const storeKey = hdrs.get('x-store-key') ?? 'ae';
-  const ctx      = await app.forRequest(storeKey, lang);
 
-  const page = await ctx.cms.getContentPage('homepage').catch(() => null);
-  if (!page) notFound();
+  const cms  = await buildCmsClient(config, storeKey, lang);
+  const page = await cms.getContentPage('homepage').catch(() => null);
+
+  if (!page) {
+    return (
+      <main className="max-w-4xl mx-auto p-12 text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome</h1>
+        <p className="text-gray-500">CMS content not yet configured.</p>
+      </main>
+    );
+  }
 
   return <HomePageClient page={page} />;
 }
 ```
+
+:::warning Do NOT use `ctx.cms` from `NexuviaApp` in Server Components
+`NexuviaApp.buildCmsClient()` constructs `MockCmsAdapter` with **no loader** — every `getContentPage()` returns `null`. For Server Components use `buildCmsClient()` from `lib/cms-server.ts` (see [CMS wiring](/wiring/cms) for the full helper).
+:::
 
 ```tsx
 // src/app/[lang]/page-client.tsx
@@ -386,11 +446,18 @@ export function HomePageClient({ page }: { page: CMSPage }) {
 
 ### Product detail
 
+:::danger `ctx.product.getProduct()` is event-based — it does NOT return the product
+`ProductClient` (what `ctx.product` is) emits a `'product'` event instead of returning data. Awaiting it always gives `undefined`. For SSR, use `getProductAdapter()` from `lib/product-server.ts` which returns data directly.
+:::
+
 ```tsx
 // src/app/[lang]/p/[code]/page.tsx
-import { headers } from 'next/headers';
-import { app }     from '../../../../../nexuvia.app';
-import { notFound } from 'next/navigation';
+import { headers }   from 'next/headers';
+import { notFound }  from 'next/navigation';
+import { buildCmsClient }    from '@/lib/cms-server';
+import { getProductAdapter } from '@/lib/product-server';
+import config        from '../../../../nexuvia.config';
+import { AddToCartButton } from '@/components/product/AddToCartButton';
 import type { Metadata } from 'next';
 
 export async function generateMetadata({
@@ -398,8 +465,7 @@ export async function generateMetadata({
 }: { params: Promise<{ lang: string; code: string }> }): Promise<Metadata> {
   const { lang, code } = await params;
   const storeKey = (await headers()).get('x-store-key') ?? 'ae';
-  const ctx = await app.forRequest(storeKey, lang);
-  const product = await ctx.product.getProduct(code);
+  const product  = await getProductAdapter(config, storeKey, lang).getProduct(code).catch(() => null);
   return { title: product?.name ?? code };
 }
 
@@ -408,20 +474,25 @@ export default async function ProductPage({
 }: { params: Promise<{ lang: string; code: string }> }) {
   const { lang, code } = await params;
   const storeKey = (await headers()).get('x-store-key') ?? 'ae';
-  const ctx      = await app.forRequest(storeKey, lang);
 
-  const [product, cmsPage] = await Promise.all([
-    ctx.product.getProduct(code),
-    ctx.cms.getProductPage(code).catch(() => null),
+  const [product] = await Promise.all([
+    getProductAdapter(config, storeKey, lang).getProduct(code).catch(() => null),
+    buildCmsClient(config, storeKey, lang).then(cms =>
+      cms.getContentPage('productDetails').catch(() => null)
+    ),
   ]);
 
   if (!product) notFound();
 
   return (
-    <div>
-      <h1>{product.name}</h1>
-      <p>{product.price?.formattedValue}</p>
-      {/* AddToCartButton uses useCart() from NexuviaProvider */}
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
+      <p className="text-xl text-gray-600 mb-6">{product.price?.formattedValue}</p>
+      <AddToCartButton
+        code={product.code}
+        name={product.name}
+        price={product.price?.value}
+      />
     </div>
   );
 }
@@ -429,10 +500,15 @@ export default async function ProductPage({
 
 ### Search
 
+:::danger `ctx.search.searchByTerm()` is event-based — it does NOT return results
+Same issue as product: `SearchClient` emits events instead of returning data. Use `getSearchAdapter()` from `lib/search-server.ts` for SSR.
+:::
+
 ```tsx
 // src/app/[lang]/search/page.tsx
-import { headers } from 'next/headers';
-import { app }     from '../../../../nexuvia.app';
+import { headers }   from 'next/headers';
+import { getSearchAdapter } from '@/lib/search-server';
+import config        from '../../../../nexuvia.config';
 
 export default async function SearchPage({
   params,
@@ -444,18 +520,15 @@ export default async function SearchPage({
   const { lang }  = await params;
   const { q = '', page = '0' } = await searchParams;
   const storeKey  = (await headers()).get('x-store-key') ?? 'ae';
-  const ctx       = await app.forRequest(storeKey, lang);
 
-  const results = await ctx.search.searchByTerm(q, {
-    page:     Number(page),
-    pageSize: 24,
-  });
+  const results = await getSearchAdapter(config, storeKey, lang)
+    .searchByTerm(q, { page: Number(page), pageSize: 24 });
 
   return (
     <div>
-      <p>{results.pagination.totalResults} results for &quot;{q}&quot;</p>
+      <p>{results?.pagination?.totalResults ?? 0} results for &quot;{q}&quot;</p>
       <ul>
-        {results.products.map(p => (
+        {results?.products?.map(p => (
           <li key={p.code}>{p.name} — {p.price?.formattedValue}</li>
         ))}
       </ul>
@@ -466,7 +539,7 @@ export default async function SearchPage({
 
 ---
 
-## Step 8 — Server-side auth routes
+## Step 9 — Server-side auth routes
 
 ### Auth config file (auto-registers on import)
 
@@ -629,24 +702,24 @@ export async function POST(request: NextRequest) {
 
 ---
 
-## Step 9 — Cart server route
+## Step 10 — Cart server route
 
-```ts
+```tsx
 // src/app/api/cart/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { OccCartAdapter } from '@nexuvia/cart/server';
 import { app } from '../../../../nexuvia.app';
 
 async function getAdapter(req: NextRequest, lang = 'en') {
   const storeKey = req.headers.get('x-store-key') ?? 'ae';
   const ctx      = await app.forRequest(storeKey, lang);
-  return ctx.cart.server; // OccCartAdapter
+  return ctx.cart.server; // OccCartAdapter — server-only, OAuth-authenticated
 }
 
+// GET /api/cart?cartId=xxx&lang=en
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const lang    = searchParams.get('lang')   ?? 'en';
-  const cartId  = searchParams.get('cartId') ?? null;
+  const lang   = searchParams.get('lang')   ?? 'en';
+  const cartId = searchParams.get('cartId') ?? null;
 
   try {
     const adapter = await getAdapter(request, lang);
@@ -657,33 +730,48 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST /api/cart
+// ProxyCartAdapter sends: { product: { code }, quantity, cartId?, language, baseSite }
 export async function POST(request: NextRequest) {
-  const body     = await request.json();
-  const { lang = 'en', cartId, productCode, quantity = 1 } = body;
+  const body = await request.json();
+  const { cartId, quantity = 1, language = 'en' } = body;
+  // ProxyCartAdapter nests the product code — read both shapes
+  const productCode: string = body.productCode ?? body.product?.code;
 
   try {
-    const adapter = await getAdapter(request, lang);
-    const id      = cartId ?? await adapter.createCart();
-    const result  = await adapter.addToCart(id, { productCode, quantity });
-    return NextResponse.json({ cartId: id, result });
+    const adapter = await getAdapter(request, language);
+
+    let resolvedCartId = cartId as string | undefined;
+    if (!resolvedCartId) {
+      const newCart = await adapter.createCart();
+      // Anonymous carts MUST use guid, NOT code
+      // code (e.g. "6AD5262") → 400 Cart not found on subsequent requests
+      // guid (UUID)           → always works
+      resolvedCartId = (newCart as any).guid ?? (newCart as any).code ?? String(newCart);
+    }
+
+    const result = await adapter.addToCart(resolvedCartId, { productCode, quantity });
+    return NextResponse.json({ cartId: resolvedCartId, modification: result.modification });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
   }
 }
 
+// PATCH /api/cart — body: { cartId, entryNumber, quantity, language }
 export async function PATCH(request: NextRequest) {
-  const body     = await request.json();
-  const { lang = 'en', cartId, entryNumber, quantity } = body;
+  const body = await request.json();
+  const { cartId, entryNumber, quantity, language = 'en' } = body;
 
   try {
-    const adapter = await getAdapter(request, lang);
-    const result  = await adapter.updateCartEntry(cartId, entryNumber, quantity);
+    const adapter = await getAdapter(request, language);
+    const result  = await adapter.patchEntry(cartId, entryNumber, quantity);  // NOT updateCartEntry
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
   }
 }
 
+// DELETE /api/cart?cartId=xxx&entry=0&lang=en
 export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const lang        = searchParams.get('lang')        ?? 'en';
@@ -700,9 +788,17 @@ export async function DELETE(request: NextRequest) {
 }
 ```
 
+:::danger Three critical cart API corrections
+
+1. **PATCH uses `patchEntry()`** not `updateCartEntry()` — `updateCartEntry` does not exist on `OccCartAdapter`
+2. **`ProxyCartAdapter` sends `product: { code }` not `productCode`** — read `body.productCode ?? body.product?.code`
+3. **Anonymous carts use `guid` not `code`** — Hybris returns both but only `guid` works in `users/anonymous/carts/{id}` URLs. Using `code` returns 400 Cart not found.
+
+:::
+
 ---
 
-## Step 10 — Using hooks in Client Components
+## Step 11 — Using hooks in Client Components
 
 All hooks are exported from `@nexuvia/react` — no manual import of internal providers.
 
@@ -746,7 +842,8 @@ export function UserMenu() {
   }
   return (
     <div>
-      <span>Hello, {user.name}</span>
+      <span>Hello, {user.fullName || user.email}</span>
+      {/* logout() takes NO arguments in the installed package */}
       <button onClick={() => logout()}>Sign out</button>
     </div>
   );
@@ -756,7 +853,8 @@ export function UserMenu() {
 ```tsx
 // src/components/CartIcon.tsx
 'use client';
-import { useCart } from '@nexuvia/react';
+import { useEffect } from 'react';
+import { useCart }   from '@nexuvia/react';
 
 export function CartIcon() {
   const { cart, fetchCart } = useCart();
@@ -767,9 +865,80 @@ export function CartIcon() {
 }
 ```
 
+### Cart page
+
+:::info `isLoading` from `useCart()` is never `true` in React
+`CartClient` emits only `'cart'` and `'error'` events — there is no `'loading'` event. React state only updates when those events fire, by which point `isLoading` is already `false`. Use a local `ready` state (tied to `fetchCart().finally(...)`) for a proper loading state.
+:::
+
+```tsx
+// src/app/[lang]/cart/page-client.tsx
+'use client';
+import { useEffect, useState } from 'react';
+import { useCart }   from '@nexuvia/react';
+import Link          from 'next/link';
+import { useParams } from 'next/navigation';
+
+export function CartPageClient() {
+  const { lang } = useParams<{ lang: string }>();
+  const { cart, cartId, fetchCart, updateItem, removeItem } = useCart();
+  // isLoading from useCart() is NEVER true in React — CartClient emits no 'loading' event
+  // Use a local ready flag tied to the actual fetch promise instead
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCart().finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Re-fetch if cartId arrives after mount (race: addToCart in flight during navigation)
+  useEffect(() => {
+    if (ready && cartId && !cart) fetchCart();
+  }, [cartId]);
+
+  if (!ready) return <p className="p-6">Loading cart…</p>;
+
+  if (!cart || cart.entries?.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
+        <Link href={`/${lang}/search`} className="text-blue-600 hover:underline">
+          Continue shopping
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6">Cart</h1>
+      <ul className="space-y-4 mb-8">
+        {cart.entries?.map((entry) => (
+          <li key={entry.entryNumber} className="flex items-center justify-between border-b pb-4">
+            <div>
+              <p className="font-medium">{entry.product?.name}</p>
+              <p className="text-gray-500 text-sm">{entry.basePrice?.formattedValue}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => updateItem(entry.entryNumber, entry.quantity - 1)}
+                      disabled={entry.quantity <= 1}>−</button>
+              <span>{entry.quantity}</span>
+              <button onClick={() => updateItem(entry.entryNumber, entry.quantity + 1)}>+</button>
+              <button onClick={() => removeItem(entry.entryNumber)}>Remove</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="text-xl font-bold">Total: {cart.totalPrice?.formattedValue}</div>
+    </div>
+  );
+}
+```
+
 ---
 
-## Step 11 — SmartEdit (optional)
+## Step 12 — SmartEdit (optional)
 
 Pass `smartEditConfig` to `NexuviaProvider` and wrap CMS components:
 
@@ -824,6 +993,29 @@ export function CmsHeaderComponent({ component }: { component: CMSComponent }) {
 | `import '@/config/auth'` first line in every auth route | Triggers self-registration |
 | `OccCartAdapter` server-only, `ProxyCartAdapter` browser | SAP OCC is blocked by CORS in browsers |
 | `initialUser` passed from server layout | Prevents flash-of-unauthenticated content |
+
+---
+
+## Verified installed hook API (`@nexuvia/react@0.2.0`)
+
+The documentation above reflects the **installed published package**. Some methods differ from the monorepo source:
+
+| Hook | Returns (installed `@0.2.0`) |
+| ---- | --------------------------- |
+| `useCart()` | `{ cart, cartId, isLoading, error, fetchCart, addItem, updateItem, removeItem, mergeCarts, clearCart }` |
+| `useAuth()` | `{ user, isLoading, login(storeKey), logout(), refreshSession }` |
+| `useStore()` | `{ storeKey, storeConfig, language }` |
+| `useAnalytics()` | `{ track(event) }` — generic push; no `trackAddToCart`, `trackPageView`, etc. |
+| `useCmsPage()` | `{ page }` |
+| `useSmartEdit()` | SmartEdit context |
+
+**`SessionUser` fields:** `id, email, firstName, lastName, fullName, salutation, phoneNumber, country, customFields, expiresAt` — **no `name` field**.
+
+**`useCart()` method names:** `updateItem` (not `updateCartEntry`), `removeItem` (not `removeFromCart`).
+
+**`useAnalytics()` track call:** `track({ type: 'add_to_cart', code, name, quantity, price })` — not `trackAddToCart(...)`.
+
+**`logout()`** takes **no arguments** — not `logout(storeKey)`.
 
 ---
 

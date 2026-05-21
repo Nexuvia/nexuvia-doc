@@ -24,7 +24,7 @@ Peer dependencies: `react >= 18`, `react-dom >= 18`.
 ## What's exported
 
 | Export | What it is |
-|--------|-----------|
+| ------ | ---------- |
 | `NexuviaProvider` | Single provider that wraps all contexts in the correct nesting order |
 | `useStore()` | Access current `storeKey`, `language`, and `storeConfig` |
 | `useAuth()` | Access `user`, `login()`, `logout()`, `refreshSession()` |
@@ -57,6 +57,16 @@ interface NexuviaProviderProps {
 }
 ```
 
+`cartClientConfig` must include `apiBase` — it tells `ProxyCartAdapter` where your server route is:
+
+```ts
+cartClientConfig: {
+  baseSite: storeConfig.baseSite,
+  language,
+  apiBase: '/api/cart',  // ← required: tells ProxyCartAdapter where your route is
+}
+```
+
 ### Usage
 
 ```tsx
@@ -86,7 +96,7 @@ export function App() {
 
 `NexuviaProvider` nests providers in this order (outermost → innermost):
 
-```
+```text
 StoreProvider
   AuthProvider
     CartProvider
@@ -115,13 +125,15 @@ const {
 ```ts
 const {
   user,            // SessionUser | null
-  isLoggedIn,      // boolean
+  isLoading,       // boolean
 
   login,           // (storeKey: string) => Promise<void>
-  logout,          // (storeKey: string) => Promise<void>
+  logout,          // () => Promise<void>  ← no arguments
   refreshSession,  // () => Promise<void>
 } = useAuth();
 ```
+
+`SessionUser` fields: `id, email, firstName, lastName, fullName, salutation, phoneNumber, country, customFields, expiresAt` — **there is no `name` field**; use `fullName` or `firstName`.
 
 ---
 
@@ -129,17 +141,17 @@ const {
 
 ```ts
 const {
-  cart,             // Cart | null
-  cartId,           // string | null
-  isLoading,        // boolean
-  error,            // Error | null
+  cart,        // Cart | null
+  cartId,      // string | null
+  isLoading,   // boolean — NOTE: never true in React (no 'loading' event emitted)
+  error,       // Error | null
 
-  fetchCart,        // () => Promise<void>
-  addItem,          // (productCode: string, quantity?: number) => Promise<void>
-  updateCartEntry,  // (entryNumber: number, quantity: number) => Promise<void>
-  removeFromCart,   // (entryNumber: number) => Promise<void>
-  mergeCarts,       // (userId: string) => Promise<void>
-  clearCart,        // () => void
+  fetchCart,   // () => Promise<void>
+  addItem,     // (productCode: string, quantity?: number) => Promise<void>
+  updateItem,  // (entryNumber: number, quantity: number) => Promise<void>
+  removeItem,  // (entryNumber: number) => Promise<void>
+  mergeCarts,  // (userId: string) => Promise<void>
+  clearCart,   // () => void
 } = useCart();
 ```
 
@@ -161,19 +173,16 @@ const {
 
 ```ts
 const {
-  lastEvent,               // AnalyticsEvent | null
-  isReady,                 // boolean
-  eventCount,              // number
-
-  trackPageView,           // (title?: string) => void
-  trackProductImpression,  // (products, listName?) => void
-  trackProductClick,       // (params) => void
-  trackAddToCart,          // (params) => void
-  trackRemoveFromCart,     // (params) => void
-  trackPurchase,           // (params) => void
-  push,                    // (event: AnalyticsEvent) => void
+  track,  // (event: { type: string; [key: string]: any }) => void
 } = useAnalytics();
+
+// Example:
+track({ type: 'add_to_cart', code: 'SKU123', name: 'Product', quantity: 1, price: 99.99 });
 ```
+
+:::info `useAnalytics()` installed API
+The installed `@nexuvia/react@0.2.0` only exposes `{ track }`. The `trackAddToCart`, `trackPageView`, `trackProductImpression`, etc. helpers shown in earlier docs are in the monorepo source but not in the published build. Use `track({ type: '...', ...payload })` for all events.
+:::
 
 ---
 

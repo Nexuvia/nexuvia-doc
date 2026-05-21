@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 Search has the same **two modes** as product:
 
 | Mode | When to use |
-|------|-------------|
+| ---- | ----------- |
 | **Server fetch** | Search results page (`/search?q=...`) and category listing (`/c/{code}`) |
 | **Client reactive** | Autocomplete dropdown (fetches as user types) |
 
@@ -23,13 +23,48 @@ Most projects use **both** — server fetch for the results page, client reactiv
 
 Same pattern as Mode 1 in [product wiring](/wiring/product) — fetch in the server, pass as a prop.
 
+:::danger `ctx.search.searchByTerm()` does NOT return results
+`SearchClient` (what `ctx.search` is) is event-based. `await ctx.search.searchByTerm(q, opts)` always returns `undefined`.
+
+For SSR use the adapter directly:
+
+```ts
+// lib/search-server.ts
+import { OccSearchAdapter, MockSearchAdapter } from '@nexuvia/search';
+import { OccClient } from '@nexuvia/occ';
+import type { NexuviaConfig } from '@nexuvia/core';
+
+export function getSearchAdapter(
+  config: NexuviaConfig,
+  storeKey: string,
+  language: string,
+) {
+  const storeConfig = config.stores[storeKey];
+  if (config.cms?.useMock) {
+    return new MockSearchAdapter();
+  }
+  const { protocol, host, port, occBasePath, version } = config.hybris as any;
+  const baseUrl = port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
+  const occ = new OccClient(
+    { baseUrl, basePath: occBasePath, version },
+    storeConfig.baseSite,
+    language,
+  );
+  return new OccSearchAdapter(occ);
+}
+```
+
+Then: `const results = await getSearchAdapter(config, storeKey, lang).searchByTerm(q, opts);`
+:::
+
 <Tabs groupId="framework">
 <TabItem value="nextjs" label="Next.js">
 
 ```tsx
 // src/app/[lang]/search/page.tsx
 import { headers } from 'next/headers';
-import { app }     from '@/nexuvia.app';
+import { getSearchAdapter } from '@/lib/search-server';
+import config from '../../../../nexuvia.config';
 import SearchPageClient from './page-client';
 
 export default async function SearchPage({ params, searchParams }) {
@@ -38,8 +73,8 @@ export default async function SearchPage({ params, searchParams }) {
   const query    = (sp.q as string) ?? '';
   const storeKey = (await headers()).get('x-store-key') ?? '';
 
-  const ctx     = await app.forRequest(storeKey, lang);
-  const results = await ctx.search.searchByTerm(query, { pageSize: 24 });
+  const results = await getSearchAdapter(config, storeKey, lang)
+    .searchByTerm(query, { pageSize: 24 });
 
   return <SearchPageClient results={results} query={query} />;
 }
@@ -277,7 +312,7 @@ useEffect(() => {
 ## Cache behaviour
 
 | Operation | TTL |
-|-----------|-----|
+| --------- | --- |
 | `searchByTerm` | 2 minutes |
 | `searchByCategory` | 2 minutes |
 | `getQuerySuggestions` | **Never cached** — stale autocomplete is worse than slow autocomplete |
@@ -287,7 +322,7 @@ useEffect(() => {
 ## Common errors
 
 | Error | Cause | Fix |
-|-------|-------|-----|
+| ----- | ----- | --- |
 | Suggestions never appear | Missing provider OR threshold too high | Wrap with provider; check `term.length >= 2` |
 | Slow on every keystroke | No debounce | Add 200-300ms debounce |
 | Wrong results when switching term/category | Cache mismatch | Call `clearCache()` between switches |

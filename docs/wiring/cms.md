@@ -19,7 +19,7 @@ CMS wiring has **3 simple parts** — and they are nearly identical across frame
 ## What you build (the 4 layers)
 
 | Layer | What |
-|-------|------|
+| ----- | ---- |
 | **Layer 1** — Config | `cms.useMock`, `cms.pageLabels`, `cms.componentTypes` in `nexuvia.config.ts` |
 | **Layer 1** — Bridge | `app.forRequest(storeKey, lang)` → `ctx.cms` (via `NexuviaApp`) |
 | **Layer 1** — Registry | `registerDefaultCmsComponents()` — runs once on app startup |
@@ -148,20 +148,97 @@ export class AppComponent {}
 
 This happens server-side. The page is fetched **once** and passed into your UI tree.
 
+:::danger `ctx.cms` from `NexuviaApp` requires a mock loader
+`NexuviaApp.buildCmsClient()` constructs `MockCmsAdapter()` with **no loader argument** — every `getContentPage()` returns `null`. You must build your own `CmsClient` with an `fs`-backed loader for mock mode, or use a live OAuth-authenticated adapter.
+
+**Correct approach for Next.js SSR:**
+
+```ts
+// lib/cms-server.ts  ← server-only helper
+import { readFileSync } from 'fs';
+import { join }         from 'path';
+import { CmsClient, MockCmsAdapter, OccCmsAdapter } from '@nexuvia/cms';
+import { OccClient }    from '@nexuvia/occ';
+import { getStaticToken } from '@nexuvia/auth-server';
+import type { NexuviaConfig } from '@nexuvia/core';
+
+const MOCK_DIR = join(process.cwd(), 'public', 'mock');
+
+function fsMockLoader(label: string) {
+  try {
+    const raw = readFileSync(join(MOCK_DIR, `${label}.json`), 'utf-8');
+    return Promise.resolve(JSON.parse(raw));
+  } catch {
+    return Promise.resolve(null);
+  }
+}
+
+export async function buildCmsClient(
+  config: NexuviaConfig,
+  storeKey?: string,
+  language?: string,
+) {
+  if (config.cms.useMock) {
+    return new CmsClient(new MockCmsAdapter(fsMockLoader));
+  }
+
+  const { protocol, host, port, version, cmsBasePath } = config.hybris as any;
+  const baseUrl = port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
+  const storeConfig =
+    (storeKey && config.stores[storeKey]) ?? Object.values(config.stores)[0];
+  const lang = language ?? storeConfig.defaultLanguage;
+
+  try {
+    const token = await getStaticToken({
+      baseUrl,
+      tokenEndpoint: config.authServer.tokenEndpoint,
+      clientId:      config.authServer.clientId,
+      clientSecret:  config.authServer.clientSecret,
+    });
+
+    const cmsOcc = new OccClient(
+      { baseUrl, basePath: cmsBasePath ?? '/customws', version: version ?? 'v2' },
+      storeConfig.baseSite,
+      lang,
+    );
+    cmsOcc.setAccessToken(token.access_token);
+    return new CmsClient(new OccCmsAdapter(cmsOcc, cmsBasePath ?? '/customws'));
+  } catch {
+    // CMS backend not available — return no-op adapter
+    return new CmsClient(new MockCmsAdapter(() => Promise.resolve(null)));
+  }
+}
+```
+
+Place mock JSON files in `public/mock/` (not `mock/` at root):
+
+```text
+public/
+  mock/
+    homepage.json
+    productDetails.json
+    cartPage.json
+    search.json
+```
+
+Then call: `const cms = await buildCmsClient(config, storeKey, lang);`
+:::
+
 <Tabs groupId="framework">
 <TabItem value="nextjs" label="Next.js (Server Component)">
 
 ```tsx
 // app/[lang]/page.tsx
 import { headers } from 'next/headers';
-import { app }     from '@/nexuvia.app';
+import { buildCmsClient } from '@/lib/cms-server';
+import config from '../../../nexuvia.config';
 import { HomePageClient } from './page-client';
 
 export default async function HomePage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang }  = await params;
   const storeKey  = (await headers()).get('x-store-key') ?? 'ae';
-  const ctx       = await app.forRequest(storeKey, lang);
-  const page      = await ctx.cms.getContentPage('homepage').catch(() => null);
+  const cms       = await buildCmsClient(config, storeKey, lang);
+  const page      = await cms.getContentPage('homepage').catch(() => null);
 
   return <HomePageClient page={page} />;
 }
@@ -270,7 +347,7 @@ export class CmsService {
 'use client';
 import type { ComponentType } from 'react';
 import { CmsPageProvider, useCmsPage } from '@nexuvia/react';
-import { componentRegistry }           from '@nexuvia/cms';
+import { componentRegistry }           from '@nexuvia/cms/client';
 import type { CMSPage, CMSComponent }  from '@nexuvia/cms';
 
 // CmsSlotRenderer is not exported by any nexuvia package — build it locally.
@@ -424,7 +501,7 @@ The JSON must be a valid SAP OCC CMS page response. The adapter handles both wra
 ## Common errors
 
 | Error | Cause | Fix |
-|-------|-------|-----|
+| ----- | ----- | --- |
 | Slot renders empty | typeCode not in registry | Add `componentRegistry.register('Type', Component)` |
 | `404` from `getContentPage('homepage')` (mock mode) | Missing JSON | Create `mock/homepage.json` at project root |
 | `404` from `getContentPage('homepage')` (live) | Wrong page label | Check `cms.pageLabels` matches your backend's UIDs |

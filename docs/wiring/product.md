@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 Product wiring has **two modes** — pick the simplest one that fits.
 
 | Mode | When to use |
-|------|-------------|
+| ---- | ----------- |
 | **Server fetch** (recommended) | Product detail page that doesn't mutate state. Just fetch and render. |
 | **Client reactive** | Pages with mutations (post review, live updates). Needs Layer 3 wrapper. |
 
@@ -23,22 +23,66 @@ Most projects use only **Mode 1**.
 
 The product is fetched server-side, passed to your UI tree as a prop. No reactive wrapper needed.
 
+:::danger `ctx.product.getProduct()` does NOT return the product
+`ProductClient` (what `ctx.product` is) is event-based — its methods emit events instead of returning data. `await ctx.product.getProduct(code)` always returns `undefined`.
+
+For SSR use the adapter directly:
+
+```ts
+// lib/product-server.ts
+import { OccProductAdapter, MockProductAdapter } from '@nexuvia/product';
+import { OccClient }    from '@nexuvia/occ';
+import type { NexuviaConfig } from '@nexuvia/core';
+
+export function getProductAdapter(
+  config: NexuviaConfig,
+  storeKey: string,
+  language: string,
+) {
+  const storeConfig = config.stores[storeKey];
+  if (config.cms?.useMock) {
+    return new MockProductAdapter(async (code: string) => ({
+      code,
+      name: `Product ${code}`,
+      price: { value: 0, formattedValue: 'N/A', currencyIso: 'AED' },
+      images: [],
+    }));
+  }
+  const { protocol, host, port, occBasePath, version } = config.hybris as any;
+  const baseUrl = port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
+  const occ = new OccClient(
+    { baseUrl, basePath: occBasePath, version },
+    storeConfig.baseSite,
+    language,
+  );
+  return new OccProductAdapter(occ);
+}
+```
+
+Then in your Server Component:
+
+```ts
+const product = await getProductAdapter(config, storeKey, lang).getProduct(code);
+```
+
+:::
+
 <Tabs groupId="framework">
 <TabItem value="nextjs" label="Next.js (Server Component)">
 
 ```tsx
 // src/app/[lang]/p/[code]/page.tsx
 import { headers } from 'next/headers';
-import { app }     from '@/nexuvia.app';
+import { getProductAdapter } from '@/lib/product-server';
 import { notFound } from 'next/navigation';
+import config from '../../../../nexuvia.config';
 import ProductPageClient from './page-client';
 
 export default async function ProductPage({ params }) {
   const { lang, code } = await params;
   const storeKey       = (await headers()).get('x-store-key') ?? '';
 
-  const ctx     = await app.forRequest(storeKey, lang);
-  const product = await ctx.product.getProduct(code);
+  const product = await getProductAdapter(config, storeKey, lang).getProduct(code).catch(() => null);
   if (!product) notFound();
 
   return <ProductPageClient product={product} />;
@@ -224,7 +268,7 @@ export class ProductService implements OnDestroy {
 ## Cache behaviour
 
 | Operation | TTL | Notes |
-|-----------|-----|-------|
+| --------- | --- | ----- |
 | `getProduct(code)` | 5 minutes per code | Cached |
 | `getReviews(code)` | 5 minutes per code | Cleared on `postReview` |
 | `postReview(code, ...)` | — | Auto-invalidates and re-fetches reviews |
@@ -234,7 +278,7 @@ export class ProductService implements OnDestroy {
 ## Common errors
 
 | Error | Cause | Fix |
-|-------|-------|-----|
+| ----- | ----- | --- |
 | `useProduct() must be used inside <ProductProvider>` | Mode 2 missing provider | Wrap with provider |
 | Cache busts on every render | Missing `useMemo` around `new ProductClient(...)` | Add stable deps |
 | Cannot pass client from server to client component | React serialization rule | Construct client in Client Component or use Mode 1 |

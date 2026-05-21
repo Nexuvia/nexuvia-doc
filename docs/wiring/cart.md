@@ -15,7 +15,7 @@ This page shows how to wire `@nexuvia/cart` in **any framework**. The library co
 ## What you build (the 4 layers)
 
 | Layer | What | File location varies by framework |
-|-------|------|---------------------------------|
+| ----- | ---- | --------------------------------- |
 | **Layer 1** — Config | Nothing special — uses `baseSite` + `language` from store config | — |
 | **Layer 2** — Server route | `/api/cart` proxy (GET + POST + PATCH + DELETE) | Next.js / Express / Nuxt / Angular |
 | **Layer 3** — Reactive wrapper | `CartProvider` (React) / composable (Vue) / service (Angular) | Your app code |
@@ -25,7 +25,7 @@ This page shows how to wire `@nexuvia/cart` in **any framework**. The library co
 Browsers cannot call SAP OCC directly — CORS blocks it. The browser uses `ProxyCartAdapter` which calls **your** `/api/cart` endpoint, which then uses `OccCartAdapter` to call SAP server-side.
 
 | Adapter | Where it runs | Calls |
-|---------|--------------|-------|
+| ------- | ------------- | ----- |
 | `OccCartAdapter` | Server only | SAP OCC directly |
 | `ProxyCartAdapter` | Browser | Your `/api/cart` route |
 
@@ -45,50 +45,88 @@ Create `src/app/api/cart/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
-import { app } from '@/nexuvia.app';
+import { app } from '../../../../nexuvia.app';
 
 async function getAdapter(req: NextRequest, lang = 'en') {
   const storeKey = req.headers.get('x-store-key') ?? 'ae';
   const ctx      = await app.forRequest(storeKey, lang);
-  return ctx.cart.server;
+  return ctx.cart.server; // OccCartAdapter
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const cartId = searchParams.get('cartId');
-  const lang   = searchParams.get('lang') ?? 'en';
-  if (!cartId) return NextResponse.json({ error: 'Missing cartId' }, { status: 400 });
+// GET /api/cart?cartId=xxx&lang=en
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const lang   = searchParams.get('lang')   ?? 'en';
+  const cartId = searchParams.get('cartId') ?? null;
   try {
-    const cart = await (await getAdapter(req, lang)).getCart(cartId);
+    const adapter = await getAdapter(request, lang);
+    const cart    = cartId ? await adapter.getCart(cartId) : null;
     return NextResponse.json(cart);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
   }
 }
 
-export async function POST(req: NextRequest) {
-  const { lang = 'en', cartId, productCode, quantity = 1 } = await req.json();
-  const adapter = await getAdapter(req, lang);
-  const id      = cartId ?? await adapter.createCart();
-  const result  = await adapter.addToCart(id, { productCode, quantity });
-  return NextResponse.json({ cartId: id, result });
+// POST — ProxyCartAdapter sends { product: { code }, quantity, cartId?, language, baseSite }
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { cartId, quantity = 1, language = 'en' } = body;
+  // ProxyCartAdapter nests the code under product.code
+  const productCode: string = body.productCode ?? body.product?.code;
+
+  try {
+    const adapter = await getAdapter(request, language);
+    let resolvedCartId = cartId as string | undefined;
+    if (!resolvedCartId) {
+      const newCart = await adapter.createCart();
+      // Anonymous Hybris carts: ALWAYS use guid — code returns 400 on subsequent calls
+      resolvedCartId = (newCart as any).guid ?? (newCart as any).code ?? String(newCart);
+    }
+    const result = await adapter.addToCart(resolvedCartId, { productCode, quantity });
+    return NextResponse.json({ cartId: resolvedCartId, modification: result.modification });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
+  }
 }
 
-export async function PATCH(req: NextRequest) {
-  const { lang = 'en', cartId, entryNumber, quantity } = await req.json();
-  const result = await (await getAdapter(req, lang)).updateCartEntry(cartId, entryNumber, quantity);
-  return NextResponse.json(result);
+// PATCH — uses patchEntry(), NOT updateCartEntry()
+export async function PATCH(request: NextRequest) {
+  const body = await request.json();
+  const { cartId, entryNumber, quantity, language = 'en' } = body;
+  try {
+    const adapter = await getAdapter(request, language);
+    const result  = await adapter.patchEntry(cartId, entryNumber, quantity);
+    return NextResponse.json(result);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
+  }
 }
 
-export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
+// DELETE /api/cart?cartId=xxx&entry=0&lang=en
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
   const lang        = searchParams.get('lang')        ?? 'en';
   const cartId      = searchParams.get('cartId')      ?? '';
-  const entryNumber = Number(searchParams.get('entryNumber') ?? '0');
-  await (await getAdapter(req, lang)).removeFromCart(cartId, entryNumber);
-  return NextResponse.json({ success: true });
+  const entryNumber = Number(searchParams.get('entry') ?? '0');
+  try {
+    const adapter = await getAdapter(request, lang);
+    await adapter.removeFromCart(cartId, entryNumber);
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: err.status ?? 500 });
+  }
 }
 ```
+
+:::danger Three fixes required vs. original docs
+
+| Wrong (original docs) | Correct |
+| --------------------- | ------- |
+| `adapter.updateCartEntry(cartId, n, qty)` | `adapter.patchEntry(cartId, n, qty)` |
+| Read `body.productCode` | Read `body.productCode ?? body.product?.code` (ProxyCartAdapter nests it) |
+| `(newCart as any).code ?? guid` | `(newCart as any).guid ?? code` — anonymous carts only work with `guid` |
+
+:::
 
 </TabItem>
 <TabItem value="express" label="Node.js (Express)">
@@ -528,6 +566,12 @@ The cart page needs two things:
 `CartClient` stores the cart ID in a cookie. On initial render the state is empty — the client hasn't read the cookie yet. Call `fetchCart()` once on mount to load the cart from the server.
 :::
 
+:::warning `isLoading` from `useCart()` is never `true` in React
+`CartClient` only emits `'cart'` and `'error'` events — there is no `'loading'` event. React state never transitions to `isLoading: true`. Using `if (isLoading) return <p>Loading...</p>` will never show the spinner.
+
+**Fix:** Use a local `ready` state tied to `fetchCart().finally(...)` as shown below. The `ready` flag correctly transitions to `true` exactly when the fetch completes (immediately if no `cartId`, after the GET returns if there is one).
+:::
+
 ```tsx
 // src/app/[lang]/cart/page.tsx  (Server Component — minimal shell)
 export default function CartPage() {
@@ -538,33 +582,43 @@ export default function CartPage() {
 ```tsx
 // src/app/[lang]/cart/page-client.tsx
 'use client';
-import { useEffect }  from 'react';
-import { useCart }    from '@nexuvia/react';
+import { useEffect, useState } from 'react';
+import { useCart }   from '@nexuvia/react';
+import Link          from 'next/link';
+import { useParams } from 'next/navigation';
 
-export default function CartPageClient() {
-  const { cart, isLoading, fetchCart, removeFromCart, updateCartEntry } = useCart();
+export function CartPageClient() {
+  const { lang } = useParams<{ lang: string }>();
+  const { cart, cartId, fetchCart, updateItem, removeItem } = useCart();
+  const [ready, setReady] = useState(false);
 
-  // Populate cart from the cookie on first render
-  useEffect(() => { fetchCart(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCart().finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
+  }, []);
 
-  if (isLoading) return <p>Loading cart…</p>;
-  if (!cart || cart.entries.length === 0) return <p>Your cart is empty.</p>;
+  // Re-fetch when cartId arrives after mount (navigation race with addToCart)
+  useEffect(() => {
+    if (ready && cartId && !cart) fetchCart();
+  }, [cartId]);
+
+  if (!ready) return <p>Loading cart…</p>;
+  if (!cart || cart.entries?.length === 0) return <p>Your cart is empty.</p>;
 
   return (
     <div>
-      <h1>Your Cart ({cart.totalItems} items)</h1>
+      <h1>Cart ({cart.totalItems} items)</h1>
       <ul>
         {cart.entries.map(entry => (
           <li key={entry.entryNumber}>
-            <span>{entry.product.name}</span>
-            <input
-              type="number"
-              defaultValue={entry.quantity}
-              min={1}
-              onBlur={e => updateCartEntry(entry.entryNumber, Number(e.target.value))}
-            />
+            <span>{entry.product?.name}</span>
+            <button onClick={() => updateItem(entry.entryNumber, entry.quantity - 1)}
+                    disabled={entry.quantity <= 1}>−</button>
+            <span>{entry.quantity}</span>
+            <button onClick={() => updateItem(entry.entryNumber, entry.quantity + 1)}>+</button>
             <span>{entry.totalPrice?.formattedValue}</span>
-            <button onClick={() => removeFromCart(entry.entryNumber)}>Remove</button>
+            <button onClick={() => removeItem(entry.entryNumber)}>Remove</button>
           </li>
         ))}
       </ul>
@@ -599,12 +653,15 @@ You also need a `/api/cart/merge` route on the server that calls
 ## Common errors
 
 | Error | Cause | Fix |
-|-------|-------|-----|
+| ----- | ----- | --- |
 | `useCart() must be used inside <CartProvider>` | Missing Layer 3 | Wrap your app with `<CartProvider client={…}>` |
 | CORS error fetching `/occ/v2/...` | Used `OccCartAdapter` in browser | Switch to `ProxyCartAdapter` |
 | Cart resets on every page reload | Forgot `new CookieStorage()` | Pass it as 2nd arg to `CartClient` |
 | New `CartClient` on every render | Missing `useMemo` (React) | Wrap construction in `useMemo([baseSite, language])` |
 | `addItem` resolves but UI never updates | Forgot to subscribe to `client.on('cart', …)` | Check your provider/composable subscribes to events |
+| `updateCartEntry is not a function` | Wrong method name | Use `updateItem` from `useCart()`, `patchEntry` from `OccCartAdapter` |
+| `removeFromCart is not a function` | Wrong method name | Use `removeItem` from `useCart()` |
+| Cart 400 after create | Using `code` instead of `guid` | Extract `guid` first: `(newCart as any).guid ?? code` |
 
 ---
 
