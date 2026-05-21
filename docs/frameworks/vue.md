@@ -3,8 +3,6 @@ title: Vue 3
 sidebar_position: 3
 ---
 
-<!--
-
 ## Vue 3 — Complete Wiring Guide
 
 This guide covers two setups:
@@ -865,4 +863,3 @@ export default defineEventHandler(async (event) => {
 - [ ] Secrets in `runtimeConfig` (not `runtimeConfig.public`) — never in `NUXT_PUBLIC_*`
 - [ ] `NexuviaApp.getInstance(config)` called once at module level (singleton)
 - [ ] Cart routes use `ctx.cart.server` — never `ProxyCartAdapter` server-side
--->

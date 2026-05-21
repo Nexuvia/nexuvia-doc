@@ -3,8 +3,6 @@ title: Browser (Plain TS/JS)
 sidebar_position: 5
 ---
 
-<!--
-
 # Browser (Plain TS/JS) — Assembly Guide
 
 `@nexuvia/browser` provides a single `NexuviaClient` class with no framework dependency. Use it in vanilla TypeScript, server-rendered HTML pages, or anywhere React/Vue/Angular are not available.
@@ -233,4 +231,3 @@ const searchClient  = new SearchClient(new OccSearchAdapter(occClient));
 - [ ] `client.on('error', handler)` subscribed to capture runtime errors
 - [ ] Cart operations proxied through your backend (never direct OCC from browser)
 - [ ] `trackPageView` called manually on SPA navigation
--->

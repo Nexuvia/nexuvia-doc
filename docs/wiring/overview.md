@@ -57,14 +57,11 @@ Where this server lives depends on your stack:
 |-------|--------------------|
 | **Next.js (App Router)** | `src/app/api/*/route.ts` (Route Handlers) |
 | **React (Vite/CRA)** | Separate Express/Hono backend running alongside |
-
-<!--
 | **Vue 3 (Nuxt)** | `server/api/*.ts` (Nuxt server routes) |
 | **Vue 3 (Vite SPA)** | Separate Express/Hono backend |
 | **Angular (Universal)** | `server.ts` Express handlers |
 | **Angular (CLI only)** | Separate Express/Hono backend |
 | **Plain Node.js (CLI / scripts)** | Just call adapters directly — no Layer 2 needed |
--->
 
 **The library code you write is identical in all of them.** Only the route handler syntax differs (and the docs show all variants side-by-side).
 

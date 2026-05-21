@@ -153,7 +153,6 @@ After `postReview`, the reviews cache auto-invalidates and re-fetches — the co
 
 <Tabs groupId="framework">
 <TabItem value="vue" label="Vue 3">
-<TabItem value="vue" label="Vue 3">
 
 ```ts
 // composables/useProduct.ts
